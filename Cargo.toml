@@ -6,6 +6,7 @@ license = "MIT"
 authors = ["DeeChael"]
 repository = "https://github.com/DeeChael/penguin-downloader"
 description = "A modular music downloader core library with plugin support."
+exclude = ["internal", "original", "temp", "test", ".git", ".idea"]
 
 [dependencies]
 # 异步运行时
