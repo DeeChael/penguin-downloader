@@ -1,0 +1,268 @@
+use std::path::Path;
+use std::sync::Arc;
+
+use dashmap::DashMap;
+use libloading::{Library, Symbol};
+use tracing::{info, warn};
+
+use super::PluginInfo;
+use crate::error::{Error, Result};
+use crate::provider::{MusicProvider, ProviderInfo};
+use crate::tagger::Tagger;
+
+pub struct LoadedPlugin {
+    pub info: PluginInfo,
+    pub library: Library,
+}
+
+pub struct PluginRegistry {
+    providers: DashMap<String, Arc<dyn MusicProvider>>,
+    taggers: DashMap<String, Arc<dyn Tagger>>,
+    loaded_plugins: DashMap<String, LoadedPlugin>,
+}
+
+impl PluginRegistry {
+    pub fn new() -> Self {
+        Self {
+            providers: DashMap::new(),
+            taggers: DashMap::new(),
+            loaded_plugins: DashMap::new(),
+        }
+    }
+
+    pub fn register(&self, name: &str, provider: Arc<dyn MusicProvider>) {
+        info!("[注册] 注册音源: name={}", name);
+        self.providers.insert(name.to_lowercase(), provider);
+    }
+
+    pub fn get_provider(&self, name: &str) -> Option<Arc<dyn MusicProvider>> {
+        self.providers.get(&name.to_lowercase()).map(|p| p.clone())
+    }
+
+    pub fn list_provider_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.providers.iter().map(|e| e.key().clone()).collect();
+        names.sort();
+        names
+    }
+
+    pub fn list_providers(&self) -> Vec<(String, Arc<dyn MusicProvider>)> {
+        self.providers
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect()
+    }
+
+    pub fn register_tagger(&self, name: &str, tagger: Arc<dyn Tagger>) {
+        info!("[注册] 注册 tagger: name={}", name);
+        self.taggers.insert(name.to_lowercase(), tagger);
+    }
+
+    pub fn get_tagger(&self, name: &str) -> Option<Arc<dyn Tagger>> {
+        self.taggers.get(&name.to_lowercase()).map(|t| t.clone())
+    }
+
+    pub fn list_tagger_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.taggers.iter().map(|e| e.key().clone()).collect();
+        names.sort();
+        names
+    }
+
+    pub fn list_taggers(&self) -> Vec<(String, Arc<dyn Tagger>)> {
+        self.taggers
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect()
+    }
+
+    pub fn load_plugin_from_file<P: AsRef<Path>>(&self, file_path: P) -> Result<ProviderInfo> {
+        let path = file_path.as_ref();
+        let lib_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+
+        match self.load_plugin(path, lib_name) {
+            Ok(info) => {
+                info!(
+                    "Loaded provider: {} (name: {}, plugin: {}) from {:?}",
+                    info.id, info.name, info.plugin_id, path
+                );
+                Ok(info)
+            }
+            Err(e) => {
+                warn!("[注册] 加载插件失败: path={:?}, error={}", path, e);
+                Err(e)
+            }
+        }
+    }
+
+    pub fn load_plugins<P: AsRef<Path>>(&self, plugins_dir: P) -> Result<()> {
+        let plugins_dir = plugins_dir.as_ref();
+
+        if !plugins_dir.exists() {
+            info!("[注册] 创建插件目录: {:?}", plugins_dir);
+            std::fs::create_dir_all(plugins_dir)?;
+        }
+
+        #[cfg(target_os = "windows")]
+        const LIB_EXTENSION: &str = "dll";
+        #[cfg(target_os = "linux")]
+        const LIB_EXTENSION: &str = "so";
+        #[cfg(target_os = "macos")]
+        const LIB_EXTENSION: &str = "dylib";
+
+        let mut plugin_count = 0;
+
+        for entry in std::fs::read_dir(plugins_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext == LIB_EXTENSION {
+                        let lib_name = path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("unknown");
+
+                        match self.load_plugin(&path, lib_name) {
+                            Ok(info) => {
+                                info!(
+                                    "Loaded provider: {} (name: {}, plugin: {}) from {:?}",
+                                    info.id, info.name, info.plugin_id, path
+                                );
+                                plugin_count += 1;
+                            }
+                            Err(e) => {
+                                warn!("[注册] 加载插件失败: path={:?}, error={}", path, e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if plugin_count == 0 {
+            warn!(
+                "No plugins found in {:?} (looking for .{} files)",
+                plugins_dir, LIB_EXTENSION
+            );
+        } else {
+            info!("Successfully loaded {} plugin(s)", plugin_count);
+        }
+
+        Ok(())
+    }
+
+    fn load_plugin(&self, path: &Path, _lib_name: &str) -> Result<ProviderInfo> {
+        unsafe {
+            let library = Library::new(path).map_err(|e| {
+                Error::PluginLoad(format!("Failed to load library {:?}: {}", path, e))
+            })?;
+
+            type CreatePluginFn = unsafe extern "C" fn() -> *mut dyn super::PenguinPlugin;
+            let create_fn: Symbol<CreatePluginFn> =
+                library.get(b"penguin_plugin_create").map_err(|e| {
+                    Error::PluginLoad(format!(
+                        "Failed to find 'penguin_plugin_create' symbol in {:?}: {}. Make sure the plugin implements the PenguinPlugin trait.",
+                        path, e
+                    ))
+                })?;
+
+            info!(
+                "Loading plugin using PenguinPlugin interface from {:?}",
+                path
+            );
+            let plugin_ptr = create_fn();
+            if plugin_ptr.is_null() {
+                return Err(Error::PluginLoad(format!(
+                    "Plugin creation function returned null"
+                )));
+            }
+
+            let plugin: Box<dyn super::PenguinPlugin> = Box::from_raw(plugin_ptr);
+            let plugin_info = plugin.info();
+            let plugin_id = plugin_info.id.clone();
+
+            let providers = plugin.register_providers();
+            let mut first_info: Option<ProviderInfo> = None;
+
+            for (_provider_id, provider) in providers {
+                let info = provider.info();
+                if first_info.is_none() {
+                    first_info = Some(info.clone());
+                }
+                info!(
+                    "Registering provider '{}' from plugin '{}'",
+                    info.id, plugin_id
+                );
+                self.register(&info.id, provider);
+            }
+
+            let taggers = plugin.register_taggers();
+            for (tagger_name, tagger) in taggers {
+                info!(
+                    "Registering tagger '{}' from plugin '{}'",
+                    tagger_name, plugin_id
+                );
+                self.register_tagger(&tagger_name, tagger);
+            }
+
+            self.loaded_plugins.insert(
+                plugin_id.clone(),
+                LoadedPlugin {
+                    info: plugin_info,
+                    library,
+                },
+            );
+
+            first_info.ok_or_else(|| {
+                Error::PluginLoad(format!(
+                    "Plugin '{}' did not register any providers",
+                    plugin_id
+                ))
+            })
+        }
+    }
+
+}
+
+impl Default for PluginRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+static REGISTRY: std::sync::OnceLock<PluginRegistry> = std::sync::OnceLock::new();
+
+pub fn global_registry() -> &'static PluginRegistry {
+    REGISTRY.get_or_init(PluginRegistry::new)
+}
+
+pub fn load_plugins<P: AsRef<Path>>(plugins_dir: P) -> Result<()> {
+    global_registry().load_plugins(plugins_dir)
+}
+
+pub fn get_provider(name: &str) -> Option<Arc<dyn MusicProvider>> {
+    global_registry().get_provider(name)
+}
+
+pub fn list_provider_names() -> Vec<String> {
+    global_registry().list_provider_names()
+}
+
+pub fn register_provider(name: &str, provider: Arc<dyn MusicProvider>) {
+    global_registry().register(name, provider);
+}
+
+pub fn get_tagger(name: &str) -> Option<Arc<dyn Tagger>> {
+    global_registry().get_tagger(name)
+}
+
+pub fn list_tagger_names() -> Vec<String> {
+    global_registry().list_tagger_names()
+}
+
+pub fn register_tagger(name: &str, tagger: Arc<dyn Tagger>) {
+    global_registry().register_tagger(name, tagger);
+}

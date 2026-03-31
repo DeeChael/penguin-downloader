@@ -1,0 +1,54 @@
+[package]
+name = "penguin-downloader"
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+authors = ["DeeChael"]
+repository = "https://github.com/DeeChael/penguin-downloader"
+description = "A modular music downloader core library with plugin support."
+
+[dependencies]
+# 异步运行时
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "io-util"] }
+# HTTP 客户端
+reqwest = { version = "0.12", features = ["json", "stream", "cookies"] }
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 异步 trait
+async-trait = "0.1"
+# 错误处理
+anyhow = "1"
+thiserror = "1"
+# 日志门面
+tracing = "0.1"
+# 动态库加载
+libloading = "0.8"
+# 并发 HashMap
+dashmap = "6"
+# 随机数
+fastrand = "2"
+# 异步工具
+futures = "0.3"
+# 正则表达式
+regex = "1"
+# 时间
+chrono = "0.4"
+# 音频元数据
+lofty = "0.21"
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lib]
+name = "penguin_downloader"
+path = "src/lib.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "z"
+
+[profile.dev.package."*"]
+opt-level = 2
