@@ -49,8 +49,7 @@ pub struct PluginInfo {
     pub id: String,
     pub name: String,
     pub version: String,
-    pub description: String,
-    pub options: Vec<ProviderOption>,
+    pub description: String
 }
 
 impl PluginInfo {
@@ -84,18 +83,8 @@ impl PluginInfo {
             id,
             name: name.into(),
             version: version.into(),
-            description: description.into(),
-            options: Vec::new(),
+            description: description.into()
         }
     }
 
-    pub fn with_options(mut self, options: Vec<ProviderOption>) -> Self {
-        self.options = options;
-        self
-    }
-
-    pub fn add_option(mut self, option: ProviderOption) -> Self {
-        self.options.push(option);
-        self
-    }
 }
