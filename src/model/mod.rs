@@ -1,3 +1,15 @@
+//! # 数据模型模块
+//!
+//! 定义了库中使用的所有数据结构和类型。
+//!
+//! ## 主要类型
+//!
+//! - [`SongInfo`] - 歌曲信息
+//! - [`AlbumInfo`] - 专辑信息
+//! - [`SearchResult`] - 搜索结果
+//! - [`DownloadOptions`] - 下载选项
+//! - [`PlaylistResult`] - 歌单结果
+
 mod album_info;
 mod album_search_result;
 mod download_callbacks;

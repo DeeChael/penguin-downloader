@@ -11,7 +11,6 @@ pub struct MetadataInfo {
 }
 
 impl MetadataInfo {
-
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             title: title.into(),
@@ -59,5 +58,4 @@ impl MetadataInfo {
         self.disc_number = Some(disc);
         self
     }
-
 }

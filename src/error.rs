@@ -1,6 +1,16 @@
+//! # 错误处理模块
+//!
+//! 定义了库中所有可能发生的错误类型。
+//!
+//! 主要使用 [`Error`] 枚举来表示各种错误情况，
+//! 并提供 [`Result`] 类型别名方便使用。
+
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// 企鹅下载器错误类型
+///
+/// 包含所有可能发生的错误情况。
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Provider not found: {0}")]

@@ -13,7 +13,6 @@ pub struct LyricResult {
 }
 
 impl LyricResult {
-
     pub fn new() -> Self {
         Self {
             lrc: None,
@@ -42,5 +41,4 @@ impl LyricResult {
         self.roma = Some(roma.into());
         self
     }
-
 }

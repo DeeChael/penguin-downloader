@@ -12,6 +12,37 @@ use crate::tagger::Tagger;
 use crate::model::*;
 use crate::error::{Error, Result};
 
+/// 音乐下载器
+///
+/// 负责从音源提供者下载歌曲、专辑和歌单。
+/// 支持自定义文件名格式、音质选择和元数据嵌入。
+///
+/// # 文件名格式
+///
+/// 可以使用以下占位符：
+/// - `{title}` - 歌曲标题
+/// - `{artist}` - 艺术家
+/// - `{album}` - 专辑名
+/// - `{track}` - 曲目编号（补零）
+/// - `{provider}` - 音源名称
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use penguin_downloader::{Downloader, DownloadOptions};
+/// use std::sync::Arc;
+///
+/// # async fn example(provider: Arc<dyn penguin_downloader::MusicProvider>) -> anyhow::Result<()> {
+/// let downloader = Downloader::new(provider, None)
+///     .with_output_dir("./downloads");
+///
+/// // 获取歌曲信息后下载
+/// let song = provider.search_songs("晴天", Default::default(), None).await?.songs[0].clone();
+/// let options = DownloadOptions::default();
+/// downloader.download_song(&song, &options).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct Downloader {
     provider: Arc<dyn MusicProvider>,
     credential: Option<String>,
@@ -36,14 +67,19 @@ fn format_size(bytes: u64) -> String {
 }
 
 fn sanitize_file_name(name: &str) -> String {
-    let invalid_chars = regex::Regex::new(r#"[<>:"/\\|?*]"#).unwrap();
+    let invalid_chars = regex::Regex::new(r#"[<>"/\\|?*]"#).unwrap();
     let whitespace = regex::Regex::new(r"\s+").unwrap();
     let result = invalid_chars.replace_all(name, "_");
     whitespace.replace_all(&result, " ").trim().to_string()
 }
 
 impl Downloader {
-
+    /// 创建新的下载器实例
+    ///
+    /// # Arguments
+    ///
+    /// * `provider` - 音源提供者
+    /// * `credential` - 可选的登录凭证（base64 编码）
     pub fn new(provider: Arc<dyn MusicProvider>, credential: Option<String>) -> Self {
         Self {
             provider,
@@ -61,11 +97,17 @@ impl Downloader {
         self.credential.as_deref()
     }
 
+    /// 设置输出目录
+    ///
+    /// 默认为当前目录（`.`）
     pub fn with_output_dir(mut self, dir: impl AsRef<Path>) -> Self {
         self.base_output_dir = dir.as_ref().to_path_buf();
         self
     }
 
+    /// 设置元数据标签器
+    ///
+    /// 用于在音源不提供元数据时，从其他来源获取
     pub fn use_tagger(mut self, tagger: Arc<dyn Tagger>) -> Self {
         self.tagger = Some(tagger);
         self

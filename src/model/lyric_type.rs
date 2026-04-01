@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub enum LyricType {
     None,
     Normal,
-    Verbatim
+    Verbatim,
 }
 
 impl Default for LyricType {
