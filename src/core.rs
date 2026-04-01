@@ -20,23 +20,23 @@ impl PenguinCore {
         }
     }
 
-    pub fn load_plugins_from_dir(&self, plugins_dir: impl AsRef<Path>) -> crate::Result<()> {
+    pub async fn load_plugins_from_dir(&self, plugins_dir: impl AsRef<Path>) -> crate::Result<()> {
         let plugins_dir = plugins_dir.as_ref();
         info!("[核心] 从目录加载插件: {:?}", plugins_dir);
 
         std::fs::create_dir_all(plugins_dir)?;
 
-        self.registry.load_plugins(plugins_dir)?;
+        self.registry.load_plugins(plugins_dir).await?;
         
         info!("[核心] 插件加载完成");
         Ok(())
     }
 
-    pub fn load_plugin_from_file(&self, file_path: impl AsRef<Path>) -> crate::Result<()> {
+    pub async fn load_plugin_from_file(&self, file_path: impl AsRef<Path>) -> crate::Result<()> {
         let file_path = file_path.as_ref();
         info!("[核心] 从文件加载插件: {:?}", file_path);
         
-        self.registry.load_plugin_from_file(file_path)?;
+        self.registry.load_plugin_from_file(file_path).await?;
         
         info!("[核心] 插件加载完成: {:?}", file_path);
         Ok(())

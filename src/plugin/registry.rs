@@ -7,7 +7,7 @@ use tracing::{info, warn};
 
 use super::PluginInfo;
 use crate::error::{Error, Result};
-use crate::provider::{MusicProvider, ProviderInfo};
+use crate::provider::MusicProvider;
 use crate::tagger::Tagger;
 
 pub struct LoadedPlugin {
@@ -74,20 +74,20 @@ impl PluginRegistry {
             .collect()
     }
 
-    pub fn load_plugin_from_file<P: AsRef<Path>>(&self, file_path: P) -> Result<ProviderInfo> {
+    pub async fn load_plugin_from_file<P: AsRef<Path>>(
+        &self,
+        file_path: P,
+    ) -> Result<()> {
         let path = file_path.as_ref();
         let lib_name = path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
 
-        match self.load_plugin(path, lib_name) {
-            Ok(info) => {
-                info!(
-                    "Loaded provider: {} (name: {}, plugin: {}) from {:?}",
-                    info.id, info.name, info.plugin_id, path
-                );
-                Ok(info)
+        match self.load_plugin(path, lib_name).await {
+            Ok(_) => {
+                info!("Loaded plugin from {:?}", path);
+                Ok(())
             }
             Err(e) => {
                 warn!("[注册] 加载插件失败: path={:?}, error={}", path, e);
@@ -96,7 +96,9 @@ impl PluginRegistry {
         }
     }
 
-    pub fn load_plugins<P: AsRef<Path>>(&self, plugins_dir: P) -> Result<()> {
+    pub async fn load_plugins<P: AsRef<Path>>(&self,
+        plugins_dir: P,
+    ) -> Result<()> {
         let plugins_dir = plugins_dir.as_ref();
 
         if !plugins_dir.exists() {
@@ -125,12 +127,8 @@ impl PluginRegistry {
                             .and_then(|s| s.to_str())
                             .unwrap_or("unknown");
 
-                        match self.load_plugin(&path, lib_name) {
-                            Ok(info) => {
-                                info!(
-                                    "Loaded provider: {} (name: {}, plugin: {}) from {:?}",
-                                    info.id, info.name, info.plugin_id, path
-                                );
+                        match self.load_plugin(&path, lib_name).await {
+                            Ok(_) => {
                                 plugin_count += 1;
                             }
                             Err(e) => {
@@ -154,7 +152,11 @@ impl PluginRegistry {
         Ok(())
     }
 
-    fn load_plugin(&self, path: &Path, _lib_name: &str) -> Result<ProviderInfo> {
+    async fn load_plugin(
+        &self,
+        path: &Path,
+        _lib_name: &str,
+    ) -> Result<()> {
         unsafe {
             let library = Library::new(path).map_err(|e| {
                 Error::PluginLoad(format!("Failed to load library {:?}: {}", path, e))
@@ -185,13 +187,9 @@ impl PluginRegistry {
             let plugin_id = plugin_info.id.clone();
 
             let providers = plugin.register_providers();
-            let mut first_info: Option<ProviderInfo> = None;
 
             for (_provider_id, provider) in providers {
                 let info = provider.info();
-                if first_info.is_none() {
-                    first_info = Some(info.clone());
-                }
                 info!(
                     "Registering provider '{}' from plugin '{}'",
                     info.id, plugin_id
@@ -216,15 +214,9 @@ impl PluginRegistry {
                 },
             );
 
-            first_info.ok_or_else(|| {
-                Error::PluginLoad(format!(
-                    "Plugin '{}' did not register any providers",
-                    plugin_id
-                ))
-            })
+            Ok(())
         }
     }
-
 }
 
 impl Default for PluginRegistry {
@@ -239,8 +231,8 @@ pub fn global_registry() -> &'static PluginRegistry {
     REGISTRY.get_or_init(PluginRegistry::new)
 }
 
-pub fn load_plugins<P: AsRef<Path>>(plugins_dir: P) -> Result<()> {
-    global_registry().load_plugins(plugins_dir)
+pub async fn load_plugins<P: AsRef<Path>>(plugins_dir: P) -> Result<()> {
+    global_registry().load_plugins(plugins_dir).await
 }
 
 pub fn get_provider(name: &str) -> Option<Arc<dyn MusicProvider>> {
