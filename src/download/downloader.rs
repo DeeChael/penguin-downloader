@@ -461,13 +461,11 @@ impl Downloader {
         self.success_count.store(0, Ordering::SeqCst);
         self.fail_count.store(0, Ordering::SeqCst);
         
-        let playlist_name = if playlist.title.is_empty() { "未知歌单" } else { &playlist.title };
-        let output_dir = self.base_output_dir.join("playlists").join(sanitize_file_name(playlist_name));
         if options.format.is_none() {
             options.format = Some("{title} - {artist}".to_string());
         }
         
-        self.download_sequential(&playlist.songs, &output_dir, options).await
+        self.download_sequential(&playlist.songs, &self.base_output_dir, options).await
     }
 
     pub async fn download_album(
@@ -485,17 +483,11 @@ impl Downloader {
         self.success_count.store(0, Ordering::SeqCst);
         self.fail_count.store(0, Ordering::SeqCst);
         
-        let album_name = songs.first()
-            .and_then(|s| s.album.as_ref())
-            .map(|n| n.as_str())
-            .unwrap_or("未知专辑");
-        
-        let output_dir = self.base_output_dir.join("albums").join(sanitize_file_name(album_name));
         if options.format.is_none() {
             options.format = Some("{track} {title}".to_string());
         }
         
-        self.download_sequential(&songs, &output_dir, options).await
+        self.download_sequential(&songs, &self.base_output_dir, options).await
     }
 
     async fn download_sequential(
