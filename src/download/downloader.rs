@@ -33,8 +33,7 @@ use crate::error::{Error, Result};
 /// use std::sync::Arc;
 ///
 /// # async fn example(provider: Arc<dyn penguin_downloader::MusicProvider>) -> anyhow::Result<()> {
-/// let downloader = Downloader::new(provider, None)
-///     .with_output_dir("./downloads");
+/// let downloader = Downloader::new(provider, None);
 ///
 /// // 获取歌曲信息后下载
 /// let song = provider.search_songs("晴天", Default::default(), None).await?.songs[0].clone();
@@ -47,7 +46,6 @@ pub struct Downloader {
     provider: Arc<dyn MusicProvider>,
     credential: Option<String>,
     client: Client,
-    base_output_dir: PathBuf,
     total_count: AtomicI32,
     success_count: AtomicI32,
     fail_count: AtomicI32,
@@ -85,7 +83,6 @@ impl Downloader {
             provider,
             credential,
             client: Client::new(),
-            base_output_dir: PathBuf::from("."),
             total_count: AtomicI32::new(0),
             success_count: AtomicI32::new(0),
             fail_count: AtomicI32::new(0),
@@ -95,14 +92,6 @@ impl Downloader {
     
     fn credential(&self) -> Option<&str> {
         self.credential.as_deref()
-    }
-
-    /// 设置输出目录
-    ///
-    /// 默认为当前目录（`.`）
-    pub fn with_output_dir(mut self, dir: impl AsRef<Path>) -> Self {
-        self.base_output_dir = dir.as_ref().to_path_buf();
-        self
     }
 
     /// 设置元数据标签器
@@ -159,7 +148,7 @@ impl Downloader {
     }
 
     pub async fn download_song(&self, info: &SongInfo, options: &DownloadOptions) -> Result<PathBuf> {
-        self.download_song_to_dir(info, options, &self.base_output_dir).await
+        self.download_song_to_dir(info, options, &PathBuf::from(".")).await
     }
 
     pub async fn download_song_to_dir(&self, info: &SongInfo, options: &DownloadOptions, output_dir: &Path
@@ -493,7 +482,9 @@ impl Downloader {
     }
 
     pub async fn download_playlist(
-        &self, playlist_id: &str, options: &mut DownloadOptions
+        &self, playlist_id: &str,
+        output_dir: &Path,
+        options: &mut DownloadOptions
     ) -> Result<Vec<PathBuf>> {
         let pagination = Pagination::default_list();
         let playlist = self.provider.get_playlist_songs(playlist_id, pagination, self.credential()).await?;
@@ -507,11 +498,13 @@ impl Downloader {
             options.format = Some("{title} - {artist}".to_string());
         }
         
-        self.download_sequential(&playlist.songs, &self.base_output_dir, options).await
+        self.download_sequential(&playlist.songs, &output_dir, options).await
     }
 
     pub async fn download_album(
-        &self, album_id: &str, options: &mut DownloadOptions
+        &self, album_id: &str,
+        output_dir: &Path,
+        options: &mut DownloadOptions
     ) -> Result<Vec<PathBuf>> {
         let pagination = Pagination::default_list();
         let songs = self.provider.get_album_songs(album_id, pagination, self.credential()).await?;
@@ -529,7 +522,7 @@ impl Downloader {
             options.format = Some("{track} {title}".to_string());
         }
         
-        self.download_sequential(&songs, &self.base_output_dir, options).await
+        self.download_sequential(&songs, &output_dir, options).await
     }
 
     async fn download_sequential(
