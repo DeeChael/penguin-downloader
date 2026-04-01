@@ -49,7 +49,8 @@ pub struct PluginInfo {
     pub id: String,
     pub name: String,
     pub version: String,
-    pub description: String
+    pub description: String,
+    pub authors: Vec<String>,
 }
 
 impl PluginInfo {
@@ -83,8 +84,18 @@ impl PluginInfo {
             id,
             name: name.into(),
             version: version.into(),
-            description: description.into()
+            description: description.into(),
+            authors: Vec::new(),
         }
     }
 
+    pub fn with_authors(mut self, authors: Vec<String>) -> Self {
+        self.authors = authors;
+        self
+    }
+
+    pub fn add_author(mut self, author: impl Into<String>) -> Self {
+        self.authors.push(author.into());
+        self
+    }
 }
