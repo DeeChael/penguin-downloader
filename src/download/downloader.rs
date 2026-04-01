@@ -8,6 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::warn;
 
 use crate::provider::{MusicProvider, Pagination};
+use crate::tagger::Tagger;
 use crate::model::*;
 use crate::error::{Error, Result};
 
@@ -19,6 +20,7 @@ pub struct Downloader {
     total_count: AtomicI32,
     success_count: AtomicI32,
     fail_count: AtomicI32,
+    tagger: Option<Arc<dyn Tagger>>,
 }
 
 fn format_size(bytes: u64) -> String {
@@ -51,6 +53,7 @@ impl Downloader {
             total_count: AtomicI32::new(0),
             success_count: AtomicI32::new(0),
             fail_count: AtomicI32::new(0),
+            tagger: None,
         }
     }
     
@@ -63,8 +66,12 @@ impl Downloader {
         self
     }
 
+    pub fn use_tagger(mut self, tagger: Arc<dyn Tagger>) -> Self {
+        self.tagger = Some(tagger);
+        self
+    }
+
     fn format_file_name(&self, format: &str, info: &SongInfo, extension: &str) -> String {
-        // 1. 处理通用占位符
         let track_padded = format!("{:02}", info.track_number.unwrap_or(0));
         
         let sanitize = |s: &str| {
@@ -81,10 +88,8 @@ impl Downloader {
             .replace("{album}", &sanitize(info.album.as_deref().unwrap_or("未知专辑")))
             .replace("{provider}", &sanitize(self.provider.name()));
         
-        // 2. 调用 provider 处理专属占位符
         formatted = self.provider.format_file_name_custom(&formatted, info);
         
-        // 3. 添加扩展名
         formatted + "." + extension
     }
 
@@ -115,7 +120,8 @@ impl Downloader {
         self.download_song_to_dir(info, options, &self.base_output_dir).await
     }
 
-    pub async fn download_song_to_dir(&self, info: &SongInfo, options: &DownloadOptions, output_dir: &Path) -> Result<PathBuf> {
+    pub async fn download_song_to_dir(&self, info: &SongInfo, options: &DownloadOptions, output_dir: &Path
+    ) -> Result<PathBuf> {
         let format = options.format.as_deref().unwrap_or("{title} - {artist}");
         let result = self.download_internal(info, output_dir, format, options).await?;
         self.success_count.fetch_add(1, Ordering::SeqCst);
@@ -139,15 +145,13 @@ impl Downloader {
                 if existing_file.exists() {
                     tracing::info!("[下载] 文件已存在: path={:?}", existing_file);
                     if options.on_size_mismatch.is_none() {
-                        let size = existing_file.metadata()?.len();
                         return Err(Error::AlreadyExists { path: existing_file });
                     }
                 }
             }
         }
 
-        let url_result = self.provider.get_song_url(&info.id, options.quality, self.credential()).await?
-            .ok_or(Error::UrlNotFound)?;
+        let url_result = self.provider.get_song_url(&info.id, options.quality, self.credential()).await?;
 
         if !url_result.is_success() {
             return Err(Error::UrlNotFound);
@@ -184,17 +188,47 @@ impl Downloader {
         
         self.download_file_with_progress(url, &output_path, info, quality_name, info.track_number.unwrap_or(0), 1, options).await?;
         
-        let cover_data = if let Some(ref cover_url) = info.cover {
+        let mut final_info = info.clone();
+        
+        if !self.provider.has_metadata() {
+            if let Some(ref tagger) = self.tagger {
+                if let Some(metadata) = tagger.fetch_metadata(info).await {
+                    if final_info.artist.is_none() && metadata.artist.is_some() {
+                        final_info.artist = metadata.artist.clone();
+                    }
+                    if final_info.album.is_none() && metadata.album.is_some() {
+                        final_info.album = metadata.album.clone();
+                    }
+                    if final_info.cover.is_none() && metadata.cover.is_some() {
+                        final_info.cover = metadata.cover.clone();
+                    }
+                    if final_info.subtitle.is_none() && metadata.subtitle.is_some() {
+                        final_info.subtitle = metadata.subtitle.clone();
+                    }
+                    if final_info.publish_date.is_none() && metadata.publish_date.is_some() {
+                        final_info.publish_date = metadata.publish_date.clone();
+                    }
+                    if final_info.track_number.is_none() && metadata.track_number.is_some() {
+                        final_info.track_number = metadata.track_number;
+                    }
+                    if final_info.disc_number.is_none() && metadata.disc_number.is_some() {
+                        final_info.disc_number = metadata.disc_number;
+                    }
+                }
+            }
+        }
+        
+        let cover_data = if let Some(ref cover_url) = final_info.cover {
             self.download_image(cover_url).await
         } else {
             None
         };
         
-        self.embed_metadata(&output_path, cover_data.as_deref(), info).await?;
+        self.embed_metadata(&output_path, cover_data.as_deref(), &final_info).await?;
         
         if options.lyric_type != crate::model::LyricType::None {
             let final_file_name = output_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            self.download_lyric(info, output_dir, final_file_name, options).await;
+            self.download_lyric(&final_info, output_dir, final_file_name, options).await;
         }
         
         Ok(output_path)
@@ -226,13 +260,11 @@ impl Downloader {
             return Err(Error::DownloadFailed(format!("HTTP error: {}", response.status())));
         }
 
-        // Get total size from Content-Length header
         let total_size = response.headers()
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<u64>().ok());
 
-        // Call on_start callback
         if let Some(callback) = options.callbacks.on_start {
             callback(&crate::model::DownloadStart {
                 current: track_number,
@@ -308,7 +340,8 @@ impl Downloader {
         }
     }
 
-    async fn embed_metadata(&self, file_path: &Path, cover_data: Option<&[u8]>, info: &SongInfo) -> Result<()> {
+    async fn embed_metadata(&self, file_path: &Path, cover_data: Option<&[u8]>, info: &SongInfo
+    ) -> Result<()> {
         use lofty::prelude::*;
         use lofty::file::AudioFile;
         
@@ -381,7 +414,7 @@ impl Downloader {
             .get_lyric(&info.id, verbatim, options.lyric_translation, options.lyric_romanization, self.credential())
             .await
         {
-            Ok(Some(lyric)) => {
+            Ok(lyric) => {
                 let lyric_content = if verbatim {
                     lyric.verbatim
                 } else {
@@ -403,7 +436,7 @@ impl Downloader {
                     }
                 }
             }
-            Ok(None) => {}
+            Err(crate::Error::NoDataExists) => {}
             Err(e) => {
                 tracing::warn!("[下载] 歌词下载失败: {}", e);
             }
@@ -417,10 +450,11 @@ impl Downloader {
         else { "mp3" }
     }
 
-    pub async fn download_playlist(&self, playlist_id: &str, options: &mut DownloadOptions) -> Result<Vec<PathBuf>> {
+    pub async fn download_playlist(
+        &self, playlist_id: &str, options: &mut DownloadOptions
+    ) -> Result<Vec<PathBuf>> {
         let pagination = Pagination::default_list();
-        let playlist = self.provider.get_playlist_songs(playlist_id, pagination, self.credential()).await?
-            .ok_or_else(|| Error::PlaylistNotFound(playlist_id.to_string()))?;
+        let playlist = self.provider.get_playlist_songs(playlist_id, pagination, self.credential()).await?;
         
         let total = playlist.songs.len() as i32;
         self.total_count.store(total, Ordering::SeqCst);
@@ -436,7 +470,9 @@ impl Downloader {
         self.download_sequential(&playlist.songs, &output_dir, options).await
     }
 
-    pub async fn download_album(&self, album_id: &str, options: &mut DownloadOptions) -> Result<Vec<PathBuf>> {
+    pub async fn download_album(
+        &self, album_id: &str, options: &mut DownloadOptions
+    ) -> Result<Vec<PathBuf>> {
         let pagination = Pagination::default_list();
         let songs = self.provider.get_album_songs(album_id, pagination, self.credential()).await?;
         
@@ -484,9 +520,10 @@ impl Downloader {
         Ok(results)
     }
 
-    pub async fn download_song_by_id(&self, id: &str, output_dir: &Path, options: &DownloadOptions) -> Result<PathBuf> {
-        let info = self.provider.get_song_detail(id, self.credential()).await?
-            .ok_or_else(|| Error::SongNotFound(id.to_string()))?;
+    pub async fn download_song_by_id(
+        &self, id: &str, output_dir: &Path, options: &DownloadOptions
+    ) -> Result<PathBuf> {
+        let info = self.provider.get_song_detail(id, self.credential()).await?;
         
         self.download_song_to_dir(&info, options, output_dir).await
     }

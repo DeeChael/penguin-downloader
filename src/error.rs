@@ -3,7 +3,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-
     #[error("Provider not found: {0}")]
     ProviderNotFound(String),
 
@@ -136,6 +135,9 @@ pub enum Error {
     #[error("Lyrics not available")]
     LyricsNotAvailable,
 
+    #[error("No data exists")]
+    NoDataExists,
+
     #[error("Failed to decrypt lyrics")]
     LyricsDecryptionFailed,
 
@@ -147,7 +149,6 @@ pub enum Error {
 
     #[error("Operation cancelled by user")]
     Cancelled,
-
 }
 
 impl From<libloading::Error> for Error {

@@ -3,6 +3,7 @@
 /target/
 /test/
 /internal/
+/subproject/
 /.idea/
 **/*.iml
 

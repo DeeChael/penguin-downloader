@@ -173,6 +173,10 @@ pub trait MusicProvider: Send + Sync {
         !matches!(self.supported_login_methods().as_slice(), [LoginMethod::None])
     }
 
+    fn has_metadata(&self) -> bool {
+        false
+    }
+
     async fn search_songs(
         &self,
         keyword: &str,
@@ -185,9 +189,9 @@ pub trait MusicProvider: Send + Sync {
         keyword: &str,
         pagination: Pagination,
         credential: Option<&str>,
-    ) -> crate::Result<Option<AlbumSearchResult>> {
+    ) -> crate::Result<AlbumSearchResult> {
         let _ = (keyword, pagination, credential);
-        Ok(None)
+        Err(crate::Error::NoDataExists)
     }
 
     async fn get_song_url(
@@ -195,15 +199,15 @@ pub trait MusicProvider: Send + Sync {
         id: &str,
         quality: i32,
         credential: Option<&str>,
-    ) -> crate::Result<Option<SongUrlResult>>;
+    ) -> crate::Result<SongUrlResult>;
 
     async fn get_song_detail(
         &self,
         id: &str,
         credential: Option<&str>,
-    ) -> crate::Result<Option<SongInfo>> {
+    ) -> crate::Result<SongInfo> {
         let _ = (id, credential);
-        Ok(None)
+        Err(crate::Error::NoDataExists)
     }
 
     async fn get_lyric(
@@ -213,9 +217,9 @@ pub trait MusicProvider: Send + Sync {
         trans: bool,
         roma: bool,
         credential: Option<&str>,
-    ) -> crate::Result<Option<LyricResult>> {
+    ) -> crate::Result<LyricResult> {
         let _ = (id, verbatim, trans, roma, credential);
-        Ok(None)
+        Err(crate::Error::NoDataExists)
     }
 
     fn supports_verbatim_lyrics(&self) -> bool {
@@ -242,14 +246,14 @@ pub trait MusicProvider: Send + Sync {
         id: &str,
         pagination: Pagination,
         credential: Option<&str>,
-    ) -> crate::Result<Option<PlaylistResult>>;
+    ) -> crate::Result<PlaylistResult>;
 
     async fn get_user_playlists(
         &self,
         credential: Option<&str>,
-    ) -> crate::Result<Option<Vec<UserPlaylist>>> {
+    ) -> crate::Result<Vec<UserPlaylist>> {
         let _ = credential;
-        Ok(None)
+        Err(crate::Error::NoDataExists)
     }
 
     fn download_referer(&self) -> String {
