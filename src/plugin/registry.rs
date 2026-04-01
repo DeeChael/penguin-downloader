@@ -224,37 +224,3 @@ impl Default for PluginRegistry {
         Self::new()
     }
 }
-
-static REGISTRY: std::sync::OnceLock<PluginRegistry> = std::sync::OnceLock::new();
-
-pub fn global_registry() -> &'static PluginRegistry {
-    REGISTRY.get_or_init(PluginRegistry::new)
-}
-
-pub async fn load_plugins<P: AsRef<Path>>(plugins_dir: P) -> Result<()> {
-    global_registry().load_plugins(plugins_dir).await
-}
-
-pub fn get_provider(name: &str) -> Option<Arc<dyn MusicProvider>> {
-    global_registry().get_provider(name)
-}
-
-pub fn list_provider_names() -> Vec<String> {
-    global_registry().list_provider_names()
-}
-
-pub fn register_provider(name: &str, provider: Arc<dyn MusicProvider>) {
-    global_registry().register(name, provider);
-}
-
-pub fn get_tagger(name: &str) -> Option<Arc<dyn Tagger>> {
-    global_registry().get_tagger(name)
-}
-
-pub fn list_tagger_names() -> Vec<String> {
-    global_registry().list_tagger_names()
-}
-
-pub fn register_tagger(name: &str, tagger: Arc<dyn Tagger>) {
-    global_registry().register_tagger(name, tagger);
-}

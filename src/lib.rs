@@ -16,8 +16,6 @@ pub use tagger::{Tagger, TaggerInfo};
 pub use plugin::{
     PenguinPlugin, PluginInfo, ProviderOption, ProviderOptionType,
     PluginRegistry,
-    load_plugins, get_provider, list_provider_names, register_provider,
-    get_tagger, list_tagger_names, register_tagger
 };
 pub use download::Downloader;
 pub use error::{Error, Result};

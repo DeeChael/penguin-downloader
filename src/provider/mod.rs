@@ -63,7 +63,11 @@ pub trait UrlLoginCallback: Send + Sync {
 }
 
 pub trait CodeLoginCallback: Send + Sync {
-    fn request_code(&self) -> String;
+    /// 请求验证码
+    /// 
+    /// # Arguments
+    /// * `url` - 可选的 URL，某些平台可能需要用户访问此 URL 完成人机验证
+    fn request_code(&self, url: Option<&str>) -> String;
 }
 
 #[derive(Debug, Clone)]
