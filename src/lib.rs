@@ -52,9 +52,10 @@ pub mod core;
 
 pub use model::*;
 pub use provider::{
-    MusicProvider, ProviderInfo, LoginStatus, QrLoginData, LoginMethod,
+    MusicProvider, ProviderInfo, LoginStatus, QrLoginData, LoginMethodType,
     QrLoginCallback, UrlLoginCallback, CodeLoginCallback, Pagination,
-    ProviderOptionValue,
+    ProviderOptionValue, LoginMethod, QrLoginMethod, UrlLoginMethod, 
+    AccountLoginMethod, CodeLoginMethod,
 };
 pub use tagger::{Tagger, TaggerInfo};
 pub use plugin::{

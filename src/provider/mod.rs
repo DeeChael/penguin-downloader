@@ -1,6 +1,8 @@
 mod option_value;
+mod login_method;
 
 pub use option_value::ProviderOptionValue;
+pub use login_method::{LoginMethod, QrLoginMethod, UrlLoginMethod, AccountLoginMethod, CodeLoginMethod};
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -9,7 +11,7 @@ use std::time::Duration;
 use crate::model::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoginMethod {
+pub enum LoginMethodType {
     None,
     QR,
     URL,
@@ -127,43 +129,7 @@ pub trait MusicProvider: Send + Sync {
 
     fn info(&self) -> ProviderInfo;
 
-    fn supported_login_methods(&self) -> Vec<LoginMethod> {
-        vec![LoginMethod::None]
-    }
-
-    async fn start_qr_login(
-        &self,
-        _callback: &dyn QrLoginCallback,
-        _timeout: Duration,
-    ) -> crate::Result<String> {
-        Err(crate::Error::NotSupported("QR login not supported".to_string()))
-    }
-
-    async fn start_url_login(
-        &self,
-        _callback: &dyn UrlLoginCallback,
-        _timeout: Duration,
-    ) -> crate::Result<String> {
-        Err(crate::Error::NotSupported("URL login not supported".to_string()))
-    }
-
-    async fn start_account_login(
-        &self,
-        _username: &str,
-        _password: &str,
-        _timeout: Duration,
-    ) -> crate::Result<String> {
-        Err(crate::Error::NotSupported("Account login not supported".to_string()))
-    }
-
-    async fn start_code_login(
-        &self,
-        _account: &str,
-        _callback: &dyn CodeLoginCallback,
-        _timeout: Duration,
-    ) -> crate::Result<String> {
-        Err(crate::Error::NotSupported("Code login not supported".to_string()))
-    }
+    fn list_login_methods(&self) -> Vec<Box<dyn LoginMethod>>;
 
     async fn refresh_and_validate(
         &self,
@@ -173,9 +139,7 @@ pub trait MusicProvider: Send + Sync {
         Err(crate::Error::NotSupported("Refresh not supported".to_string()))
     }
 
-    fn requires_login(&self) -> bool {
-        !matches!(self.supported_login_methods().as_slice(), [LoginMethod::None])
-    }
+    fn requires_login(&self) -> bool;
 
     fn has_metadata(&self) -> bool {
         false
