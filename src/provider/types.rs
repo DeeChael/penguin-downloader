@@ -1,32 +1,5 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoginMethodType {
-    None,
-    QR,
-    URL,
-    Account,
-    Code,
-}
-
-impl LoginMethodType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LoginMethodType::None => "none",
-            LoginMethodType::QR => "qr",
-            LoginMethodType::URL => "url",
-            LoginMethodType::Account => "account",
-            LoginMethodType::Code => "code",
-        }
-    }
-}
-
-impl std::fmt::Display for LoginMethodType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Pagination {
     pub per_page: i32,
