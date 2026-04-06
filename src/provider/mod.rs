@@ -1,8 +1,4 @@
-mod option_value;
-mod login_method;
-
-pub use option_value::ProviderOptionValue;
-pub use login_method::{LoginMethod, QrLoginMethod, UrlLoginMethod, AccountLoginMethod, CodeLoginMethod};
+//! Provider module
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -10,15 +6,21 @@ use std::time::Duration;
 
 use crate::model::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoginMethodType {
-    None,
-    QR,
-    URL,
-    Account,
-    Code
-}
+// 基础类型
+pub mod types;
 
+// 登录相关（包括 LoginStatus 和 QrLoginData）
+pub mod login;
+
+// 其他模块
+pub mod option_value;
+
+// Re-exports for convenience
+pub use types::{LoginMethodType, Pagination};
+pub use login::{LoginStatus, QrLoginData, QrLoginCallback, UrlLoginCallback, CodeLoginCallback, QrLoginHandler, UrlLoginHandler, AccountLoginHandler, CodeLoginHandler, LoginMethod, QrLoginMethod, UrlLoginMethod, AccountLoginMethod, CodeLoginMethod};
+pub use option_value::ProviderOptionValue;
+
+/// Provider 信息
 #[derive(Debug, Clone)]
 pub struct ProviderInfo {
     pub id: String,
@@ -40,79 +42,7 @@ impl ProviderInfo {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum LoginStatus {
-    Pending,
-    Scanned,
-    Success,
-    Failed(String),
-    Cancelled,
-    Timeout,
-}
-
-#[derive(Debug, Clone)]
-pub enum QrLoginData {
-    Image(Vec<u8>),
-    Url(String),
-}
-
-pub trait QrLoginCallback: Send + Sync {
-    fn on_qr_data(&self, data: QrLoginData);
-}
-
-pub trait UrlLoginCallback: Send + Sync {
-    fn on_url(&self, url: String);
-}
-
-pub trait CodeLoginCallback: Send + Sync {
-    /// 请求验证码
-    /// 
-    /// # Arguments
-    /// * `url` - 可选的 URL，某些平台可能需要用户访问此 URL 完成人机验证
-    fn request_code(&self, url: Option<&str>) -> String;
-}
-
-#[derive(Debug, Clone)]
-pub struct Pagination {
-    pub per_page: i32,
-    pub page: i32,
-}
-
-impl Pagination {
-    pub fn new(per_page: i32, page: i32) -> Self {
-        Self {
-            per_page: per_page.max(1),
-            page: page.max(1),
-        }
-    }
-
-    pub fn offset(&self) -> i32 {
-        (self.page - 1) * self.per_page
-    }
-}
-
-impl Pagination {
-    pub fn default_search() -> Self {
-        Self {
-            per_page: 10,
-            page: 1,
-        }
-    }
-
-    pub fn default_list() -> Self {
-        Self {
-            per_page: 100,
-            page: 1,
-        }
-    }
-}
-
-impl Default for Pagination {
-    fn default() -> Self {
-        Self::default_search()
-    }
-}
-
+/// MusicProvider trait - 音乐提供者接口
 #[async_trait]
 pub trait MusicProvider: Send + Sync {
     fn name(&self) -> &str;
