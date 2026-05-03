@@ -12,13 +12,13 @@ pub mod types;
 // 登录相关（包括 LoginStatus 和 QrLoginData）
 pub mod login;
 
-// 其他模块
-pub mod option_value;
+// 选项相关
+pub mod option;
 
 // Re-exports for convenience
 pub use types::{Pagination};
 pub use login::{LoginMethodType, LoginStatus, QrLoginData, QrLoginCallback, UrlLoginCallback, CodeLoginCallback, QrLoginHandler, UrlLoginHandler, AccountLoginHandler, CodeLoginHandler, LoginMethod, QrLoginMethod, UrlLoginMethod, AccountLoginMethod, CodeLoginMethod};
-pub use option_value::ProviderOptionValue;
+pub use option::{ProviderOptionValue, ProviderOptionDefinition, ProviderOptionType, NumberRange, EnumVariantMap};
 
 /// Provider 信息
 #[derive(Debug, Clone)]
@@ -60,6 +60,22 @@ pub trait MusicProvider: Send + Sync {
     fn info(&self) -> ProviderInfo;
 
     fn list_login_methods(&self) -> Vec<Box<dyn LoginMethod>>;
+
+    /// List extra options that can be configured for this provider
+    fn list_extra_options(&self) -> Vec<ProviderOptionDefinition> {
+        Vec::new()
+    }
+
+    /// List enum variant mappings for an enum-type option
+    /// Returns None if the option is not an enum type
+    fn list_enum_options(&self, option: &ProviderOptionDefinition) -> Option<EnumVariantMap> {
+        if !option.is_enum() {
+            return None;
+        }
+        // Default implementation returns empty map
+        // Providers should override this to return actual enum variants
+        Some(HashMap::new())
+    }
 
     async fn refresh_and_validate(
         &self,
