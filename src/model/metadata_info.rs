@@ -2,7 +2,7 @@
 pub struct MetadataInfo {
     pub title: String,
     pub subtitle: Option<String>,
-    pub artist: Option<String>,
+    pub artists: Vec<String>,
     pub album: Option<String>,
     pub cover: Option<String>,
     pub publish_date: Option<String>,
@@ -15,7 +15,7 @@ impl MetadataInfo {
         Self {
             title: title.into(),
             subtitle: None,
-            artist: None,
+            artists: Vec::new(),
             album: None,
             cover: None,
             publish_date: None,
@@ -30,7 +30,7 @@ impl MetadataInfo {
     }
 
     pub fn with_artist(mut self, artist: impl Into<String>) -> Self {
-        self.artist = Some(artist.into());
+        self.artists.push(artist.into());
         self
     }
 

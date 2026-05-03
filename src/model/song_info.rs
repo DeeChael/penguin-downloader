@@ -24,9 +24,9 @@ pub struct SongInfo {
     /// 副标题（如 "Live版"、"Remix版" 等）
     #[serde(default)]
     pub subtitle: Option<String>,
-    /// 艺术家/歌手
+    /// 艺术家/歌手列表
     #[serde(default)]
-    pub artist: Option<String>,
+    pub artists: Vec<String>,
     /// 所属专辑
     #[serde(default)]
     pub album: Option<String>,
@@ -62,7 +62,7 @@ impl SongInfo {
             id: id.into(),
             title: title.into(),
             subtitle: None,
-            artist: None,
+            artists: Vec::new(),
             album: None,
             cover: None,
             duration: None,
@@ -79,9 +79,9 @@ impl SongInfo {
         self
     }
 
-    /// 设置艺术家
+    /// 添加一位艺术家
     pub fn with_artist(mut self, artist: impl Into<String>) -> Self {
-        self.artist = Some(artist.into());
+        self.artists.push(artist.into());
         self
     }
 

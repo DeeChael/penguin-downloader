@@ -115,7 +115,7 @@ impl Downloader {
         let mut formatted = format
             .replace("{track}", &track_padded)
             .replace("{title}", &sanitize(&info.title))
-            .replace("{artist}", &sanitize(info.artist.as_deref().unwrap_or("未知歌手")))
+            .replace("{artist}", &sanitize(info.artists.first().map(|s| s.as_str()).unwrap_or("未知歌手")))
             .replace("{album}", &sanitize(info.album.as_deref().unwrap_or("未知专辑")))
             .replace("{provider}", &sanitize(self.provider.name()));
         
@@ -224,8 +224,8 @@ impl Downloader {
         if !self.provider.has_metadata() {
             if let Some(ref tagger) = self.tagger {
                 if let Some(metadata) = tagger.fetch_metadata(info).await {
-                    if final_info.artist.is_none() && metadata.artist.is_some() {
-                        final_info.artist = metadata.artist.clone();
+                    if final_info.artists.is_empty() && !metadata.artists.is_empty() {
+                        final_info.artists = metadata.artists.clone();
                     }
                     if final_info.album.is_none() && metadata.album.is_some() {
                         final_info.album = metadata.album.clone();
@@ -386,8 +386,9 @@ impl Downloader {
             if let Some(tag) = tag_opt {
                 tag.insert_text(ItemKey::TrackTitle, info.title.clone());
                 
-                if let Some(ref artist) = info.artist {
-                    tag.insert_text(ItemKey::TrackArtist, artist.clone());
+                let artist_str = info.artists.join("、");
+                if !artist_str.is_empty() {
+                    tag.insert_text(ItemKey::TrackArtist, artist_str);
                 }
                 
                 if let Some(ref album) = info.album {
