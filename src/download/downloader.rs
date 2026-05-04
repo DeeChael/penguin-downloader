@@ -473,7 +473,7 @@ impl Downloader {
                 };
 
                 if let Some(ref content) = lyric_content {
-                    if !content.trim().is_empty() {
+                    if !content.trim().is_empty() && (content.starts_with("[") || content.starts_with("<")) {
                         let ext = if verbatim {
                             let ext = self.provider.verbatim_lyric_extension();
                             if ext.is_empty() { "verbatim" } else { ext }
@@ -491,7 +491,7 @@ impl Downloader {
 
                 // 翻译歌词（普通 lrc）
                 if let Some(ref content) = lyric.trans {
-                    if !content.trim().is_empty() {
+                    if !content.trim().is_empty() && content.starts_with("[") {
                         let trans_path = output_dir.join(format!("{}_trans.lrc", base_name));
                         if !trans_path.exists() {
                             if let Ok(mut file) = tokio::fs::File::create(&trans_path).await {
@@ -503,7 +503,7 @@ impl Downloader {
 
                 // 翻译歌词（逐字）
                 if let Some(ref content) = lyric.trans_verbatim {
-                    if !content.trim().is_empty() {
+                    if !content.trim().is_empty() && content.starts_with("<") {
                         let ext = self.provider.verbatim_lyric_extension();
                         let ext = if ext.is_empty() { "verbatim" } else { ext };
                         let trans_path = output_dir.join(format!("{}_trans.{}", base_name, ext));
@@ -517,7 +517,7 @@ impl Downloader {
 
                 // 罗马音歌词（普通 lrc）
                 if let Some(ref content) = lyric.roma {
-                    if !content.trim().is_empty() {
+                    if !content.trim().is_empty() && content.starts_with("[") {
                         let roma_path = output_dir.join(format!("{}_roma.lrc", base_name));
                         if !roma_path.exists() {
                             if let Ok(mut file) = tokio::fs::File::create(&roma_path).await {
@@ -529,7 +529,7 @@ impl Downloader {
 
                 // 罗马音歌词（逐字）
                 if let Some(ref content) = lyric.roma_verbatim {
-                    if !content.trim().is_empty() {
+                    if !content.trim().is_empty() && content.starts_with("<") {
                         let ext = self.provider.verbatim_lyric_extension();
                         let ext = if ext.is_empty() { "verbatim" } else { ext };
                         let roma_path = output_dir.join(format!("{}_roma.{}", base_name, ext));
