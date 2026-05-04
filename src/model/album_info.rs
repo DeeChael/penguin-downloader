@@ -5,7 +5,7 @@ pub struct AlbumInfo {
     pub id: String,
     pub title: String,
     #[serde(default)]
-    pub artist: Option<String>,
+    pub artists: Vec<String>,
     #[serde(default)]
     pub cover: Option<String>,
     #[serde(default)]
@@ -19,10 +19,15 @@ impl AlbumInfo {
         Self {
             id: id.into(),
             title: title.into(),
-            artist: None,
+            artists: Vec::new(),
             cover: None,
             song_count: None,
             publish_time: None,
         }
+    }
+
+    pub fn with_artist(mut self, artist: impl Into<String>) -> Self {
+        self.artists.push(artist.into());
+        self
     }
 }
