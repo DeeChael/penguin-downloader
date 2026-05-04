@@ -459,7 +459,7 @@ impl Downloader {
         }
 
         let verbatim = options.lyric_type == crate::model::LyricType::Verbatim;
-        
+
         match self
             .provider
             .get_lyric(&info.id, verbatim, options.lyric_translation, options.lyric_romanization, self.credential())
@@ -471,38 +471,72 @@ impl Downloader {
                 } else {
                     lyric.lrc
                 };
-                
-                if let Some(content) = lyric_content {
-                    let ext = if verbatim {
+
+                if let Some(ref content) = lyric_content {
+                    if !content.trim().is_empty() {
+                        let ext = if verbatim {
+                            let ext = self.provider.verbatim_lyric_extension();
+                            if ext.is_empty() { "verbatim" } else { ext }
+                        } else {
+                            "lrc"
+                        };
+                        let lrc_path = output_dir.join(format!("{}.{}", base_name, ext));
+                        if !lrc_path.exists() {
+                            if let Ok(mut file) = tokio::fs::File::create(&lrc_path).await {
+                                let _ = file.write_all(content.as_bytes()).await;
+                            }
+                        }
+                    }
+                }
+
+                // 翻译歌词（普通 lrc）
+                if let Some(ref content) = lyric.trans {
+                    if !content.trim().is_empty() {
+                        let trans_path = output_dir.join(format!("{}_trans.lrc", base_name));
+                        if !trans_path.exists() {
+                            if let Ok(mut file) = tokio::fs::File::create(&trans_path).await {
+                                let _ = file.write_all(content.as_bytes()).await;
+                            }
+                        }
+                    }
+                }
+
+                // 翻译歌词（逐字）
+                if let Some(ref content) = lyric.trans_verbatim {
+                    if !content.trim().is_empty() {
                         let ext = self.provider.verbatim_lyric_extension();
-                        if ext.is_empty() { "verbatim" } else { ext }
-                    } else {
-                        "lrc"
-                    };
-                    let lrc_path = output_dir.join(format!("{}.{}", base_name, ext));
-                    if !lrc_path.exists() {
-                        if let Ok(mut file) = tokio::fs::File::create(&lrc_path).await {
-                            let _ = file.write_all(content.as_bytes()).await;
+                        let ext = if ext.is_empty() { "verbatim" } else { ext };
+                        let trans_path = output_dir.join(format!("{}_trans.{}", base_name, ext));
+                        if !trans_path.exists() {
+                            if let Ok(mut file) = tokio::fs::File::create(&trans_path).await {
+                                let _ = file.write_all(content.as_bytes()).await;
+                            }
                         }
                     }
                 }
 
-                // 翻译歌词
-                if let Some(content) = lyric.trans {
-                    let trans_path = output_dir.join(format!("{}_trans.lrc", base_name));
-                    if !trans_path.exists() {
-                        if let Ok(mut file) = tokio::fs::File::create(&trans_path).await {
-                            let _ = file.write_all(content.as_bytes()).await;
+                // 罗马音歌词（普通 lrc）
+                if let Some(ref content) = lyric.roma {
+                    if !content.trim().is_empty() {
+                        let roma_path = output_dir.join(format!("{}_roma.lrc", base_name));
+                        if !roma_path.exists() {
+                            if let Ok(mut file) = tokio::fs::File::create(&roma_path).await {
+                                let _ = file.write_all(content.as_bytes()).await;
+                            }
                         }
                     }
                 }
 
-                // 罗马音歌词
-                if let Some(content) = lyric.roma {
-                    let roma_path = output_dir.join(format!("{}_roma.lrc", base_name));
-                    if !roma_path.exists() {
-                        if let Ok(mut file) = tokio::fs::File::create(&roma_path).await {
-                            let _ = file.write_all(content.as_bytes()).await;
+                // 罗马音歌词（逐字）
+                if let Some(ref content) = lyric.roma_verbatim {
+                    if !content.trim().is_empty() {
+                        let ext = self.provider.verbatim_lyric_extension();
+                        let ext = if ext.is_empty() { "verbatim" } else { ext };
+                        let roma_path = output_dir.join(format!("{}_roma.{}", base_name, ext));
+                        if !roma_path.exists() {
+                            if let Ok(mut file) = tokio::fs::File::create(&roma_path).await {
+                                let _ = file.write_all(content.as_bytes()).await;
+                            }
                         }
                     }
                 }

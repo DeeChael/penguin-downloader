@@ -10,6 +10,10 @@ pub struct LyricResult {
     pub trans: Option<String>,
     #[serde(default)]
     pub roma: Option<String>,
+    #[serde(default)]
+    pub trans_verbatim: Option<String>,
+    #[serde(default)]
+    pub roma_verbatim: Option<String>,
 }
 
 impl LyricResult {
@@ -19,7 +23,18 @@ impl LyricResult {
             verbatim: None,
             trans: None,
             roma: None,
+            trans_verbatim: None,
+            roma_verbatim: None,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lrc.is_none()
+            && self.verbatim.is_none()
+            && self.trans.is_none()
+            && self.roma.is_none()
+            && self.trans_verbatim.is_none()
+            && self.roma_verbatim.is_none()
     }
 
     pub fn with_lrc(mut self, lrc: impl Into<String>) -> Self {
@@ -39,6 +54,16 @@ impl LyricResult {
 
     pub fn with_roma(mut self, roma: impl Into<String>) -> Self {
         self.roma = Some(roma.into());
+        self
+    }
+
+    pub fn with_trans_verbatim(mut self, trans_verbatim: impl Into<String>) -> Self {
+        self.trans_verbatim = Some(trans_verbatim.into());
+        self
+    }
+
+    pub fn with_roma_verbatim(mut self, roma_verbatim: impl Into<String>) -> Self {
+        self.roma_verbatim = Some(roma_verbatim.into());
         self
     }
 }
