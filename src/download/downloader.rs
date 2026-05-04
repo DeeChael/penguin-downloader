@@ -486,6 +486,26 @@ impl Downloader {
                         }
                     }
                 }
+
+                // 翻译歌词
+                if let Some(content) = lyric.trans {
+                    let trans_path = output_dir.join(format!("{}_trans.lrc", base_name));
+                    if !trans_path.exists() {
+                        if let Ok(mut file) = tokio::fs::File::create(&trans_path).await {
+                            let _ = file.write_all(content.as_bytes()).await;
+                        }
+                    }
+                }
+
+                // 罗马音歌词
+                if let Some(content) = lyric.roma {
+                    let roma_path = output_dir.join(format!("{}_roma.lrc", base_name));
+                    if !roma_path.exists() {
+                        if let Ok(mut file) = tokio::fs::File::create(&roma_path).await {
+                            let _ = file.write_all(content.as_bytes()).await;
+                        }
+                    }
+                }
             }
             Err(crate::Error::NoDataExists) => {}
             Err(e) => {
