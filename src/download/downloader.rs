@@ -112,10 +112,29 @@ impl Downloader {
             whitespace.replace_all(&result, " ").trim().to_string()
         };
         
-        let mut formatted = format
+        // 处理 {artist} 和 {artist:分隔符}
+        let artist_re = regex::Regex::new(r"\{artist(:[^}]*)?\}").unwrap();
+        
+        let mut formatted = artist_re.replace_all(format, |caps: &regex::Captures| {
+            if info.artists.is_empty() {
+                return "未知歌手".to_string();
+            }
+            let raw_sep = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            if raw_sep.is_empty() {
+                // {artist} - 默认使用 " / "（sanitize 会清理非法字符，假设真有文件系统支持 /，岂不美哉？）
+                let joined = info.artists.join(" / ");
+                sanitize(&joined)
+            } else {
+                // {artist:X} - 使用 X 作为分隔符（sanitize 会清理非法字符）
+                let sep = &raw_sep[1..]; // 去掉冒号
+                let joined = info.artists.join(sep);
+                sanitize(&joined)
+            }
+        }).to_string();
+        
+        let mut formatted = formatted
             .replace("{track}", &track_padded)
             .replace("{title}", &sanitize(&info.title))
-            .replace("{artist}", &sanitize(info.artists.first().map(|s| s.as_str()).unwrap_or("未知歌手")))
             .replace("{album}", &sanitize(info.album.as_deref().unwrap_or("未知专辑")))
             .replace("{provider}", &sanitize(self.provider.name()));
         
