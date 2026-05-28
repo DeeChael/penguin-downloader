@@ -10,8 +10,13 @@ use crate::error::CoreError;
 use crate::models::*;
 use crate::traits::MusicProvider;
 
+/// 库内部使用的 Result 类型。
 pub type Result<T> = std::result::Result<T, CoreError>;
 
+/// 下载器，用于执行所有的下载操作。
+///
+/// 通过 [`crate::PenguinCore::create_downloader`] 创建，内部持有音源提供者的引用
+/// 以及可选的登录凭据，支持单曲、专辑和歌单的下载。
 pub struct PenguinDownloader {
     music_provider: Arc<dyn MusicProvider>,
     credential: Option<String>,
@@ -20,6 +25,7 @@ pub struct PenguinDownloader {
 }
 
 impl PenguinDownloader {
+    /// 创建一个新的 `PenguinDownloader`。
     pub fn new(music_provider: Arc<dyn MusicProvider>, credential: Option<String>) -> Self {
         Self {
             music_provider,
@@ -29,26 +35,35 @@ impl PenguinDownloader {
         }
     }
 
+    /// 返回当前下载器使用的 `MusicProvider`。
     pub fn get_music_provider(&self) -> &dyn MusicProvider {
         &*self.music_provider
     }
 
+    /// 返回当前设置的"未知艺术家"替代文本（用于文件名格式化），默认为 `"unknown"`。
     pub fn get_unknown_artists(&self) -> String {
         self.unknown_artists.lock().unwrap().clone()
     }
 
+    /// 设置"未知艺术家"替代文本。
     pub fn set_unknown_artists(&self, content: &str) {
         *self.unknown_artists.lock().unwrap() = content.to_string();
     }
 
+    /// 禁用指定音质，在下载回退时会跳过该音质。
+    ///
+    /// 每个 `PenguinDownloader` 的音质开关独立，且仅保留在内存中。
+    /// 销毁后重新创建的下载器默认所有音质均开启。
     pub fn disable_quality(&self, quality: i64) {
         self.disabled_qualities.lock().unwrap().insert(quality);
     }
 
+    /// 开启指定音质，使其重新可用。
     pub fn enable_quality(&self, quality: i64) {
         self.disabled_qualities.lock().unwrap().remove(&quality);
     }
 
+    /// 根据优先策略和已禁用的音质，从歌曲的可用音质中解析出最终音质。
     fn resolve_quality(&self, song: &SongInfo, preferred: &PreferredQuality) -> Result<i64> {
         let disabled = self.disabled_qualities.lock().unwrap();
 
@@ -64,17 +79,23 @@ impl PenguinDownloader {
         }
 
         match preferred {
-            PreferredQuality::Highest => available.into_iter().max().ok_or(CoreError::UnsupportedQuality),
-            PreferredQuality::Lowest => available.into_iter().min().ok_or(CoreError::UnsupportedQuality),
+            PreferredQuality::Highest => {
+                available.into_iter().max().ok_or(CoreError::UnsupportedQuality)
+            }
+            PreferredQuality::Lowest => {
+                available.into_iter().min().ok_or(CoreError::UnsupportedQuality)
+            }
             PreferredQuality::Specific(q) => {
                 if available.contains(q) {
                     Ok(*q)
                 } else {
-                    let lower: Vec<i64> = available.iter().filter(|&&a| a < *q).copied().collect();
+                    let lower: Vec<i64> =
+                        available.iter().filter(|&&a| a < *q).copied().collect();
                     if !lower.is_empty() {
                         Ok(lower.into_iter().max().unwrap())
                     } else {
-                        let higher: Vec<i64> = available.iter().filter(|&&a| a > *q).copied().collect();
+                        let higher: Vec<i64> =
+                            available.iter().filter(|&&a| a > *q).copied().collect();
                         if !higher.is_empty() {
                             Ok(higher.into_iter().min().unwrap())
                         } else {
@@ -86,6 +107,18 @@ impl PenguinDownloader {
         }
     }
 
+    /// 根据格式化模板和歌曲信息生成文件名。
+    ///
+    /// 支持以下默认变量：
+    /// - `{title}` — 歌曲标题
+    /// - `{artists}` / `{artists:<sep>}` — 艺术家（默认用 `/` 连接）
+    /// - `{album}` — 专辑名称
+    /// - `{track}` — 音轨号
+    /// - `{disc}` — 碟号
+    /// - `{provider}` — 音源提供者 ID
+    ///
+    /// 然后通过 `MusicProvider::format_file_name` 交由提供者处理自定义变量。
+    /// 最后会清理文件名中的非法字符。
     fn format_file_name(&self, fmt: &str, song: &SongInfo) -> String {
         let mut result = fmt.to_string();
 
@@ -163,6 +196,7 @@ impl PenguinDownloader {
         result.trim().to_string()
     }
 
+    /// 执行实际的 HTTP 文件下载，支持流式写入和进度回调。
     async fn download_file(
         &self,
         url: &str,
@@ -215,7 +249,8 @@ impl PenguinDownloader {
         let mut last_progress = Instant::now();
 
         while let Some(item) = stream.next().await {
-            let chunk = item.map_err(|e| CoreError::Custom(format!("Download stream error: {}", e)))?;
+            let chunk = item
+                .map_err(|e| CoreError::Custom(format!("Download stream error: {}", e)))?;
             file.write_all(&chunk)
                 .await
                 .map_err(|e| CoreError::Custom(format!("File write error: {}", e)))?;
@@ -264,6 +299,9 @@ impl PenguinDownloader {
         Ok(downloaded)
     }
 
+    /// 下载歌词并保存到本地文件。
+    ///
+    /// 普通歌词保存为 `.lrc` 格式，逐字歌词使用 `VerbatimProvider` 提供的扩展名。
     async fn download_lyrics(
         &self,
         song: &SongInfo,
@@ -343,6 +381,10 @@ impl PenguinDownloader {
         Ok(())
     }
 
+    /// 下载一组歌曲（专辑/歌单共用逻辑）。
+    ///
+    /// 先解析每首歌的音质，再以 100 首为一批调用 `get_song_urls` 获取下载链接，
+    /// 最后逐一执行下载。每首歌下载完成后处理歌词。
     async fn download_song_collection(
         &self,
         songs: Vec<SongInfo>,
@@ -511,6 +553,13 @@ impl PenguinDownloader {
         }
     }
 
+    /// 下载单首歌曲。
+    ///
+    /// # 参数
+    /// - `song` — 要下载的歌曲信息。
+    /// - `options` — 下载配置（音质选择、格式、歌词等）。
+    /// - `folder_path` — 目标文件夹路径，为 `None` 时使用当前目录。
+    /// - `callbacks` — 可选的回调，用于进度通知和错误处理。
     pub async fn download_single(
         &self,
         song: SongInfo,
@@ -668,6 +717,9 @@ impl PenguinDownloader {
         }
     }
 
+    /// 下载整个专辑的所有歌曲。
+    ///
+    /// 内部自动处理分页获取全部歌曲，然后分批获取下载链接并逐个下载。
     pub async fn download_album(
         &self,
         album: AlbumRef,
@@ -728,6 +780,9 @@ impl PenguinDownloader {
             .await;
     }
 
+    /// 下载整个歌单的所有歌曲。
+    ///
+    /// 内部自动处理分页获取全部歌曲，然后分批获取下载链接并逐个下载。
     pub async fn download_playlist(
         &self,
         playlist: PlaylistRef,
