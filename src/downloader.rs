@@ -477,43 +477,68 @@ impl PenguinDownloader {
                         Ok(m) => m.len(),
                         Err(_) => 0,
                     };
-                    if actual_size != expected_size {
-                        if let Some(cb) = options.on_size_mismatch {
-                            match cb(actual_size, expected_size) {
-                                n if n > 0 => {}
-                                0 => {
-                                    if let Some(ref cbs) = callbacks {
-                                        if let Some(on_existing) = cbs.on_existing {
-                                            on_existing(&DownloadExisting {
-                                                current,
-                                                total,
-                                                song: song.clone(),
-                                                path: file_path.clone(),
-                                                size: actual_size,
-                                            });
-                                        }
+                    if actual_size == expected_size {
+                        if let Some(ref cbs) = callbacks {
+                            if let Some(on_existing) = cbs.on_existing {
+                                on_existing(&DownloadExisting {
+                                    current,
+                                    total,
+                                    song: song.clone(),
+                                    path: file_path.clone(),
+                                    size: actual_size,
+                                });
+                            }
+                        }
+                        continue;
+                    }
+                    if let Some(cb) = options.on_size_mismatch {
+                        match cb(actual_size, expected_size) {
+                            n if n > 0 => {}
+                            0 => {
+                                if let Some(ref cbs) = callbacks {
+                                    if let Some(on_existing) = cbs.on_existing {
+                                        on_existing(&DownloadExisting {
+                                            current,
+                                            total,
+                                            song: song.clone(),
+                                            path: file_path.clone(),
+                                            size: actual_size,
+                                        });
                                     }
-                                    continue;
                                 }
-                                _ => {
-                                    if let Some(ref cbs) = callbacks {
-                                        if let Some(on_error) = cbs.on_error {
-                                            on_error(&DownloadError {
-                                                current,
-                                                total,
-                                                song: song.clone(),
-                                                error_message: format!(
-                                                    "File size mismatch: expected {}, actual {}",
-                                                    expected_size, actual_size
-                                                ),
-                                            });
-                                        }
+                                continue;
+                            }
+                            _ => {
+                                if let Some(ref cbs) = callbacks {
+                                    if let Some(on_error) = cbs.on_error {
+                                        on_error(&DownloadError {
+                                            current,
+                                            total,
+                                            song: song.clone(),
+                                            error_message: format!(
+                                                "File size mismatch: expected {}, actual {}",
+                                                expected_size, actual_size
+                                            ),
+                                        });
                                     }
-                                    continue;
                                 }
+                                continue;
                             }
                         }
                     }
+                } else {
+                    if let Some(ref cbs) = callbacks {
+                        if let Some(on_existing) = cbs.on_existing {
+                            on_existing(&DownloadExisting {
+                                current,
+                                total,
+                                song: song.clone(),
+                                path: file_path.clone(),
+                                size: 0,
+                            });
+                        }
+                    }
+                    continue;
                 }
             }
 
@@ -642,43 +667,68 @@ impl PenguinDownloader {
                     Ok(m) => m.len(),
                     Err(_) => 0,
                 };
-                if actual_size != expected_size {
-                    if let Some(cb) = options.on_size_mismatch {
-                        match cb(actual_size, expected_size) {
-                            n if n > 0 => {}
-                            0 => {
-                                if let Some(ref cbs) = callbacks {
-                                    if let Some(on_existing) = cbs.on_existing {
-                                        on_existing(&DownloadExisting {
-                                            current,
-                                            total,
-                                            song: song.clone(),
-                                            path: file_path.clone(),
-                                            size: actual_size,
-                                        });
-                                    }
+                if actual_size == expected_size {
+                    if let Some(ref cbs) = callbacks {
+                        if let Some(on_existing) = cbs.on_existing {
+                            on_existing(&DownloadExisting {
+                                current,
+                                total,
+                                song: song.clone(),
+                                path: file_path.clone(),
+                                size: actual_size,
+                            });
+                        }
+                    }
+                    return;
+                }
+                if let Some(cb) = options.on_size_mismatch {
+                    match cb(actual_size, expected_size) {
+                        n if n > 0 => {}
+                        0 => {
+                            if let Some(ref cbs) = callbacks {
+                                if let Some(on_existing) = cbs.on_existing {
+                                    on_existing(&DownloadExisting {
+                                        current,
+                                        total,
+                                        song: song.clone(),
+                                        path: file_path.clone(),
+                                        size: actual_size,
+                                    });
                                 }
-                                return;
                             }
-                            _ => {
-                                if let Some(ref cbs) = callbacks {
-                                    if let Some(on_error) = cbs.on_error {
-                                        on_error(&DownloadError {
-                                            current,
-                                            total,
-                                            song: song.clone(),
-                                            error_message: format!(
-                                                "File size mismatch: expected {}, actual {}",
-                                                expected_size, actual_size
-                                            ),
-                                        });
-                                    }
+                            return;
+                        }
+                        _ => {
+                            if let Some(ref cbs) = callbacks {
+                                if let Some(on_error) = cbs.on_error {
+                                    on_error(&DownloadError {
+                                        current,
+                                        total,
+                                        song: song.clone(),
+                                        error_message: format!(
+                                            "File size mismatch: expected {}, actual {}",
+                                            expected_size, actual_size
+                                        ),
+                                    });
                                 }
-                                return;
                             }
+                            return;
                         }
                     }
                 }
+            } else {
+                if let Some(ref cbs) = callbacks {
+                    if let Some(on_existing) = cbs.on_existing {
+                        on_existing(&DownloadExisting {
+                            current,
+                            total,
+                            song: song.clone(),
+                            path: file_path.clone(),
+                            size: 0,
+                        });
+                    }
+                }
+                return;
             }
         }
 
