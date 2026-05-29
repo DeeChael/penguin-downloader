@@ -322,13 +322,18 @@ pub struct DownloadProgress {
 
 /// 下载错误事件。
 #[derive(Clone, Debug)]
-pub struct DownloadError {
-    /// 当前下载项序号。
-    pub current: i32,
-    /// 总下载项数。
-    pub total: i32,
-    /// 出错的歌曲。
-    pub song: SongInfo,
-    /// 错误描述。
-    pub error_message: String,
+pub enum DownloadError {
+    /// 单曲下载错误。
+    SongError {
+        /// 当前下载项序号。
+        current: i32,
+        /// 总下载项数。
+        total: i32,
+        /// 出错的歌曲。
+        song: SongInfo,
+        /// 错误描述。
+        error_message: String,
+    },
+    /// 无法获取歌曲列表时的错误。
+    CollectionError(String),
 }

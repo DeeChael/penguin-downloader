@@ -406,7 +406,7 @@ impl PenguinDownloader {
                 Err(e) => {
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
-                            on_error(&DownloadError {
+                            on_error(&DownloadError::SongError {
                                 current: 0,
                                 total,
                                 song: song.clone(),
@@ -433,7 +433,7 @@ impl PenguinDownloader {
                     for (song, _) in chunk {
                         if let Some(ref cbs) = callbacks {
                             if let Some(on_error) = cbs.on_error {
-                                on_error(&DownloadError {
+                                on_error(&DownloadError::SongError {
                                     current: 0,
                                     total,
                                     song: song.clone(),
@@ -456,7 +456,7 @@ impl PenguinDownloader {
                 None => {
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
-                            on_error(&DownloadError {
+                            on_error(&DownloadError::SongError {
                                 current,
                                 total,
                                 song: song.clone(),
@@ -511,7 +511,7 @@ impl PenguinDownloader {
                             _ => {
                                 if let Some(ref cbs) = callbacks {
                                     if let Some(on_error) = cbs.on_error {
-                                        on_error(&DownloadError {
+                                        on_error(&DownloadError::SongError {
                                             current,
                                             total,
                                             song: song.clone(),
@@ -565,7 +565,7 @@ impl PenguinDownloader {
                 Err(e) => {
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
-                            on_error(&DownloadError {
+                            on_error(&DownloadError::SongError {
                                 current,
                                 total,
                                 song: song.clone(),
@@ -605,7 +605,7 @@ impl PenguinDownloader {
             Err(e) => {
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
-                        on_error(&DownloadError {
+                        on_error(&DownloadError::SongError {
                             current,
                             total,
                             song: song.clone(),
@@ -629,7 +629,7 @@ impl PenguinDownloader {
             Err(e) => {
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
-                        on_error(&DownloadError {
+                        on_error(&DownloadError::SongError {
                             current,
                             total,
                             song: song.clone(),
@@ -646,7 +646,7 @@ impl PenguinDownloader {
             None => {
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
-                        on_error(&DownloadError {
+                        on_error(&DownloadError::SongError {
                             current,
                             total,
                             song: song.clone(),
@@ -701,7 +701,7 @@ impl PenguinDownloader {
                         _ => {
                             if let Some(ref cbs) = callbacks {
                                 if let Some(on_error) = cbs.on_error {
-                                    on_error(&DownloadError {
+                                    on_error(&DownloadError::SongError {
                                         current,
                                         total,
                                         song: song.clone(),
@@ -755,7 +755,7 @@ impl PenguinDownloader {
             Err(e) => {
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
-                        on_error(&DownloadError {
+                        on_error(&DownloadError::SongError {
                             current,
                             total,
                             song: song.clone(),
@@ -799,27 +799,7 @@ impl PenguinDownloader {
                 Err(e) => {
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
-                            on_error(&DownloadError {
-                                current: 0,
-                                total: 0,
-                                song: SongInfo {
-                                    id: String::new(),
-                                    provider: String::new(),
-                                    title: format!("Failed to list album songs: {}", e),
-                                    artists: Vec::new(),
-                                    album: None,
-                                    cover: None,
-                                    duration: None,
-                                    published_date: None,
-                                    track_number: None,
-                                    disc_number: None,
-                                    qualities: Vec::new(),
-                                    size: HashMap::new(),
-                                    subtitle: None,
-                                    extras: HashMap::new(),
-                                },
-                                error_message: format!("Failed to list album songs: {}", e),
-                            });
+                            on_error(&DownloadError::CollectionError(format!("Failed to list album songs: {}", e)));
                         }
                     }
                     return;
@@ -867,27 +847,7 @@ impl PenguinDownloader {
                 Err(e) => {
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
-                            on_error(&DownloadError {
-                                current: 0,
-                                total: 0,
-                                song: SongInfo {
-                                    id: String::new(),
-                                    provider: String::new(),
-                                    title: format!("Failed to list playlist songs: {}", e),
-                                    artists: Vec::new(),
-                                    album: None,
-                                    cover: None,
-                                    duration: None,
-                                    published_date: None,
-                                    track_number: None,
-                                    disc_number: None,
-                                    qualities: Vec::new(),
-                                    size: HashMap::new(),
-                                    subtitle: None,
-                                    extras: HashMap::new(),
-                                },
-                                error_message: format!("Failed to list playlist songs: {}", e),
-                            });
+                            on_error(&DownloadError::CollectionError(format!("Failed to list playlist songs: {}", e)));
                         }
                     }
                     return;
