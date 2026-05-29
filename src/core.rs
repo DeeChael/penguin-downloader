@@ -30,7 +30,7 @@ impl PenguinCore {
     /// 版本号命名规则：x.y.z 对应数字 xyyyzzz。
     /// 例如 4.0.0 对应 4000000。
     pub fn get_version(&self) -> i64 {
-        4000000
+        4000001
     }
 
     /// 列出所有已注册的音源提供者。
