@@ -87,6 +87,8 @@ pub struct SearchResult<T> {
 pub struct SongInfo {
     /// 歌曲唯一标识符。
     pub id: String,
+    /// 来源音源提供者的 ID。
+    pub provider: String,
     /// 歌曲标题。
     pub title: String,
     /// 副标题。
@@ -116,12 +118,13 @@ pub struct SongInfo {
 impl std::hash::Hash for SongInfo {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
+        self.provider.hash(state);
     }
 }
 
 impl PartialEq for SongInfo {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.id == other.id && self.provider == other.provider
     }
 }
 
@@ -152,6 +155,8 @@ pub enum LyricsType {
 pub struct AlbumInfo {
     /// 专辑唯一标识符。
     pub id: String,
+    /// 来源音源提供者的 ID。
+    pub provider: String,
     /// 专辑标题。
     pub title: String,
     /// 副标题。
@@ -178,6 +183,8 @@ pub enum AlbumRef {
 pub struct PlaylistInfo {
     /// 歌单唯一标识符。
     pub id: String,
+    /// 来源音源提供者的 ID。
+    pub provider: String,
     /// 歌单标题。
     pub title: String,
     /// 创建者列表。
@@ -221,6 +228,8 @@ pub struct LyricsResult {
 pub struct ArtistInfo {
     /// 艺术家唯一标识符。
     pub id: String,
+    /// 来源音源提供者的 ID。
+    pub provider: String,
     /// 艺术家名称。
     pub name: String,
 }

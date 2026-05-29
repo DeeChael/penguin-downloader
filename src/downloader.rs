@@ -804,6 +804,7 @@ impl PenguinDownloader {
                                 total: 0,
                                 song: SongInfo {
                                     id: String::new(),
+                                    provider: String::new(),
                                     title: format!("Failed to list album songs: {}", e),
                                     artists: Vec::new(),
                                     album: None,
@@ -871,6 +872,7 @@ impl PenguinDownloader {
                                 total: 0,
                                 song: SongInfo {
                                     id: String::new(),
+                                    provider: String::new(),
                                     title: format!("Failed to list playlist songs: {}", e),
                                     artists: Vec::new(),
                                     album: None,
