@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
+use tracing::{debug, error, info, warn};
 
 use crate::error::CoreError;
 use crate::models::*;
@@ -75,10 +76,11 @@ impl PenguinDownloader {
             .collect();
 
         if available.is_empty() {
+            debug!("no available quality for song {} (disabled: {:?})", song.id, *disabled);
             return Err(CoreError::UnsupportedQuality);
         }
 
-        match preferred {
+        let result = match preferred {
             PreferredQuality::Highest => {
                 available.into_iter().max().ok_or(CoreError::UnsupportedQuality)
             }
@@ -92,19 +94,35 @@ impl PenguinDownloader {
                     let lower: Vec<i64> =
                         available.iter().filter(|&&a| a < *q).copied().collect();
                     if !lower.is_empty() {
-                        Ok(lower.into_iter().max().unwrap())
+                        let fallback = lower.into_iter().max().unwrap();
+                        warn!(
+                            "quality {} not available for song {}, falling back to {}",
+                            q, song.id, fallback
+                        );
+                        Ok(fallback)
                     } else {
                         let higher: Vec<i64> =
                             available.iter().filter(|&&a| a > *q).copied().collect();
                         if !higher.is_empty() {
-                            Ok(higher.into_iter().min().unwrap())
+                            let fallback = higher.into_iter().min().unwrap();
+                            warn!(
+                                "quality {} not available for song {}, falling back to {}",
+                                q, song.id, fallback
+                            );
+                            Ok(fallback)
                         } else {
                             Err(CoreError::UnsupportedQuality)
                         }
                     }
                 }
             }
+        };
+
+        if let Ok(q) = result {
+            debug!("resolved quality for song {}: {}", song.id, q);
         }
+
+        result
     }
 
     /// 根据格式化模板和歌曲信息生成文件名。
@@ -208,6 +226,11 @@ impl PenguinDownloader {
         song: &SongInfo,
         quality_label: Option<String>,
     ) -> Result<u64> {
+        debug!(
+            "starting download: song={}, url={}, path={}, quality={:?}",
+            song.id, url, path.display(), quality_label
+        );
+
         let client = reqwest::Client::builder()
             .build()
             .map_err(|e| CoreError::Custom(e.to_string()))?;
@@ -273,6 +296,11 @@ impl PenguinDownloader {
             }
         }
 
+        debug!(
+            "download complete: song={}, path={}, size={}",
+            song.id, path.display(), downloaded
+        );
+
         if let Some(ref cbs) = callbacks {
             if let Some(on_progress) = cbs.on_progress {
                 on_progress(&DownloadProgress {
@@ -313,6 +341,11 @@ impl PenguinDownloader {
         let translation = options.lyrics_translation;
         let roma = options.lyrics_roma;
 
+        debug!(
+            "fetching lyrics for song {} (verbatim={}, trans={}, roma={})",
+            song.id, want_verbatim, translation, roma
+        );
+
         let lyrics = self
             .music_provider
             .get_lyrics(
@@ -327,6 +360,7 @@ impl PenguinDownloader {
         let lyrics = match lyrics {
             Ok(l) => l,
             Err(_) if want_verbatim => {
+                debug!("verbatim lyrics not available for song {}, falling back to normal", song.id);
                 self.music_provider
                     .get_lyrics(
                         SongRef::Info(song.clone()),
@@ -399,11 +433,14 @@ impl PenguinDownloader {
             .clone()
             .unwrap_or_else(|| "{artists} - {title}".to_string());
 
+        info!("downloading {} songs to folder: {}", total, folder);
+
         let mut song_quality_pairs: Vec<(SongInfo, i64)> = Vec::new();
         for song in &songs {
             match self.resolve_quality(song, &options.preferred_quality) {
                 Ok(q) => song_quality_pairs.push((song.clone(), q)),
                 Err(e) => {
+                    error!("quality resolution failed for song {}: {}", song.id, e);
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
                             on_error(&DownloadError::SongError {
@@ -427,9 +464,11 @@ impl PenguinDownloader {
                 .await
             {
                 Ok(urls) => {
+                    debug!("fetched {} song URLs in batch", urls.len());
                     all_urls.extend(urls);
                 }
                 Err(e) => {
+                    error!("failed to batch-fetch song URLs: {}", e);
                     for (song, _) in chunk {
                         if let Some(ref cbs) = callbacks {
                             if let Some(on_error) = cbs.on_error {
@@ -454,6 +493,7 @@ impl PenguinDownloader {
             let url = match all_urls.get(&song.id) {
                 Some(u) => u.clone(),
                 None => {
+                    error!("no URL returned for song {} (provider: {})", song.id, song.provider);
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
                             on_error(&DownloadError::SongError {
@@ -478,6 +518,7 @@ impl PenguinDownloader {
                         Err(_) => 0,
                     };
                     if actual_size == expected_size {
+                        debug!("file already exists with matching size, skipping: {}", file_path.display());
                         if let Some(ref cbs) = callbacks {
                             if let Some(on_existing) = cbs.on_existing {
                                 on_existing(&DownloadExisting {
@@ -491,10 +532,17 @@ impl PenguinDownloader {
                         }
                         continue;
                     }
+                    warn!(
+                        "file size mismatch for {}: expected {}, actual {}",
+                        file_path.display(), expected_size, actual_size
+                    );
                     if let Some(cb) = options.on_size_mismatch {
                         match cb(actual_size, expected_size) {
-                            n if n > 0 => {}
+                            n if n > 0 => {
+                                info!("size mismatch callback requested re-download for {}", song.id);
+                            }
                             0 => {
+                                info!("size mismatch callback treated as existing for {}", song.id);
                                 if let Some(ref cbs) = callbacks {
                                     if let Some(on_existing) = cbs.on_existing {
                                         on_existing(&DownloadExisting {
@@ -509,6 +557,10 @@ impl PenguinDownloader {
                                 continue;
                             }
                             _ => {
+                                error!(
+                                    "size mismatch callback aborted download for {}: expected {}, actual {}",
+                                    song.id, expected_size, actual_size
+                                );
                                 if let Some(ref cbs) = callbacks {
                                     if let Some(on_error) = cbs.on_error {
                                         on_error(&DownloadError::SongError {
@@ -527,6 +579,7 @@ impl PenguinDownloader {
                         }
                     }
                 } else {
+                    debug!("file exists but no size info, skipping: {}", file_path.display());
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_existing) = cbs.on_existing {
                             on_existing(&DownloadExisting {
@@ -555,7 +608,8 @@ impl PenguinDownloader {
                 )
                 .await
             {
-                Ok(_) => {
+                Ok(size) => {
+                    info!("downloaded song {} ({} bytes) to {}", song.id, size, file_path.display());
                     if options.lyrics != LyricsType::None {
                         let _ = self
                             .download_lyrics(song, &options, &folder, &fmt)
@@ -563,6 +617,7 @@ impl PenguinDownloader {
                     }
                 }
                 Err(e) => {
+                    error!("download failed for song {}: {}", song.id, e);
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
                             on_error(&DownloadError::SongError {
@@ -592,6 +647,10 @@ impl PenguinDownloader {
         folder_path: Option<String>,
         callbacks: Option<DownloadCallbacks>,
     ) {
+        info!(
+            "downloading single song: {} - {} (provider: {})",
+            song.id, song.title, song.provider
+        );
         let total = 1i32;
         let current = 1i32;
         let folder = folder_path.unwrap_or_else(|| ".".to_string());
@@ -603,6 +662,7 @@ impl PenguinDownloader {
         let quality = match self.resolve_quality(&song, &options.preferred_quality) {
             Ok(q) => q,
             Err(e) => {
+                error!("quality resolution failed for song {}: {}", song.id, e);
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
                         on_error(&DownloadError::SongError {
@@ -627,6 +687,7 @@ impl PenguinDownloader {
         {
             Ok(u) => u,
             Err(e) => {
+                error!("failed to get URL for song {}: {}", song.id, e);
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
                         on_error(&DownloadError::SongError {
@@ -644,6 +705,7 @@ impl PenguinDownloader {
         let url = match urls.get(&song.id) {
             Some(u) => u.clone(),
             None => {
+                error!("no URL returned for song {} (provider: {})", song.id, song.provider);
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
                         on_error(&DownloadError::SongError {
@@ -668,6 +730,7 @@ impl PenguinDownloader {
                     Err(_) => 0,
                 };
                 if actual_size == expected_size {
+                    debug!("file already exists, skipping: {}", file_path.display());
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_existing) = cbs.on_existing {
                             on_existing(&DownloadExisting {
@@ -681,10 +744,17 @@ impl PenguinDownloader {
                     }
                     return;
                 }
+                warn!(
+                    "file size mismatch: expected {}, actual {} for {}",
+                    expected_size, actual_size, file_path.display()
+                );
                 if let Some(cb) = options.on_size_mismatch {
                     match cb(actual_size, expected_size) {
-                        n if n > 0 => {}
+                        n if n > 0 => {
+                            info!("size mismatch callback requested re-download for {}", song.id);
+                        }
                         0 => {
+                            info!("size mismatch callback treated as existing for {}", song.id);
                             if let Some(ref cbs) = callbacks {
                                 if let Some(on_existing) = cbs.on_existing {
                                     on_existing(&DownloadExisting {
@@ -699,6 +769,10 @@ impl PenguinDownloader {
                             return;
                         }
                         _ => {
+                            error!(
+                                "size mismatch callback aborted download for {}: expected {}, actual {}",
+                                song.id, expected_size, actual_size
+                            );
                             if let Some(ref cbs) = callbacks {
                                 if let Some(on_error) = cbs.on_error {
                                     on_error(&DownloadError::SongError {
@@ -717,6 +791,7 @@ impl PenguinDownloader {
                     }
                 }
             } else {
+                debug!("file exists but no size info, skipping: {}", file_path.display());
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_existing) = cbs.on_existing {
                         on_existing(&DownloadExisting {
@@ -747,12 +822,14 @@ impl PenguinDownloader {
             )
             .await
         {
-            Ok(_) => {
+            Ok(size) => {
+                info!("downloaded song {} ({} bytes) to {}", song.id, size, file_path.display());
                 if options.lyrics != LyricsType::None {
                     let _ = self.download_lyrics(&song, &options, &folder, &fmt).await;
                 }
             }
             Err(e) => {
+                error!("download failed for song {}: {}", song.id, e);
                 if let Some(ref cbs) = callbacks {
                     if let Some(on_error) = cbs.on_error {
                         on_error(&DownloadError::SongError {
@@ -777,6 +854,12 @@ impl PenguinDownloader {
         folder_path: Option<String>,
         callbacks: Option<DownloadCallbacks>,
     ) {
+        let album_id = match &album {
+            AlbumRef::Id(id) => id.clone(),
+            AlbumRef::Info(info) => info.id.clone(),
+        };
+        info!("downloading album: {}", album_id);
+
         let mut all_songs = Vec::new();
         let mut page = 1u64;
         let page_size = 100u64;
@@ -789,6 +872,7 @@ impl PenguinDownloader {
                 .await
             {
                 Ok(result) => {
+                    debug!("fetched page {} of album {} ({} songs)", page, album_id, result.results.len());
                     let count = result.results.len() as u64;
                     all_songs.extend(result.results);
                     if count < page_size {
@@ -797,6 +881,7 @@ impl PenguinDownloader {
                     page += 1;
                 }
                 Err(e) => {
+                    error!("failed to list album songs for {}: {}", album_id, e);
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
                             on_error(&DownloadError::CollectionError(format!("Failed to list album songs: {}", e)));
@@ -807,6 +892,7 @@ impl PenguinDownloader {
             }
         }
 
+        info!("fetched {} songs for album {}", all_songs.len(), album_id);
         self.download_song_collection(all_songs, options, folder_path, callbacks)
             .await;
     }
@@ -821,6 +907,12 @@ impl PenguinDownloader {
         folder_path: Option<String>,
         callbacks: Option<DownloadCallbacks>,
     ) {
+        let playlist_id = match &playlist {
+            PlaylistRef::Id(id) => id.clone(),
+            PlaylistRef::Info(info) => info.id.clone(),
+        };
+        info!("downloading playlist: {}", playlist_id);
+
         let mut all_songs = Vec::new();
         let mut page = 1u64;
         let page_size = 100u64;
@@ -837,6 +929,7 @@ impl PenguinDownloader {
                 .await
             {
                 Ok(result) => {
+                    debug!("fetched page {} of playlist {} ({} songs)", page, playlist_id, result.results.len());
                     let count = result.results.len() as u64;
                     all_songs.extend(result.results);
                     if count < page_size {
@@ -845,6 +938,7 @@ impl PenguinDownloader {
                     page += 1;
                 }
                 Err(e) => {
+                    error!("failed to list playlist songs for {}: {}", playlist_id, e);
                     if let Some(ref cbs) = callbacks {
                         if let Some(on_error) = cbs.on_error {
                             on_error(&DownloadError::CollectionError(format!("Failed to list playlist songs: {}", e)));
@@ -855,6 +949,7 @@ impl PenguinDownloader {
             }
         }
 
+        info!("fetched {} songs for playlist {}", all_songs.len(), playlist_id);
         self.download_song_collection(all_songs, options, folder_path, callbacks)
             .await;
     }

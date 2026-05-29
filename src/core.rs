@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use tracing::{info, warn};
+
 use crate::downloader::PenguinDownloader;
 use crate::error::CoreError;
 use crate::traits::{MetadataProvider, MusicProvider};
@@ -66,9 +68,11 @@ impl PenguinCore {
         if self.music_providers.contains_key(&id)
             || self.metadata_providers.contains_key(&id)
         {
+            warn!("music provider already exists: {}", id);
             return Err(CoreError::ProviderAlreadyExists(id));
         }
-        self.music_providers.insert(id, provider);
+        self.music_providers.insert(id.clone(), provider);
+        info!("registered music provider: {}", id);
         Ok(())
     }
 
@@ -85,9 +89,11 @@ impl PenguinCore {
         if self.music_providers.contains_key(&id)
             || self.metadata_providers.contains_key(&id)
         {
+            warn!("metadata provider already exists: {}", id);
             return Err(CoreError::ProviderAlreadyExists(id));
         }
-        self.metadata_providers.insert(id, provider);
+        self.metadata_providers.insert(id.clone(), provider);
+        info!("registered metadata provider: {}", id);
         Ok(())
     }
 
@@ -99,6 +105,9 @@ impl PenguinCore {
         music_provider: Arc<dyn MusicProvider>,
         credential: Option<&str>,
     ) -> PenguinDownloader {
+        let has_cred = credential.is_some();
+        let id = music_provider.info().map(|i| i.id().to_string()).unwrap_or_default();
+        info!("created downloader for provider: {} (credential: {})", id, has_cred);
         PenguinDownloader::new(
             music_provider,
             credential.map(|s| s.to_string()),
