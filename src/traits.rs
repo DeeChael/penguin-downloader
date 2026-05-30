@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -142,6 +143,14 @@ pub trait MusicProvider: Send + Sync {
         roma: bool,
         credential: Option<String>,
     ) -> Result<LyricsResult>;
+
+    /// 获取此音源提供者内置的元数据提供者。
+    ///
+    /// 返回的 `MetadataProvider` 的 ID 与此 `MusicProvider` 相同，且不会被注册在 `PenguinCore` 中。
+    /// 返回 `None` 表示此音源提供者没有内置的元数据提供者。
+    fn get_integrated_metadata_provider(&self) -> Option<Arc<dyn MetadataProvider>> {
+        None
+    }
 }
 
 /// 元数据提供者（Metadata Provider）trait。
