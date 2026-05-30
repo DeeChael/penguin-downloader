@@ -432,7 +432,10 @@ impl PenguinDownloader {
     ) {
         let provider = match &self.metadata_provider {
             Some(p) => p.clone(),
-            None => return,
+            None => match self.music_provider.get_integrated_metadata_provider() {
+                Some(p) => p,
+                None => return,
+            },
         };
 
         let metadata = match provider
