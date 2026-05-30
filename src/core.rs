@@ -84,7 +84,7 @@ impl PenguinCore {
         &mut self,
         provider: Arc<dyn MetadataProvider>,
     ) -> Result<()> {
-        let info = provider.info();
+        let info = provider.info()?;
         let id = info.id().to_string();
         if self.music_providers.contains_key(&id)
             || self.metadata_providers.contains_key(&id)
@@ -99,18 +99,26 @@ impl PenguinCore {
 
     /// 使用指定的音源提供者和可选凭据创建下载器。
     ///
-    /// 如果提供了 `credential`，下载器会在后续调用中将其传递给 `MusicProvider` 的相应方法。
+    /// `music_provider` 为音源提供者，`metadata_provider` 为可选的元数据提供者，
+    /// 用于为下载的文件嵌入标签。
+    /// `music_credential` 和 `metadata_credential` 分别为对应提供者的登录凭据。
     pub fn create_downloader(
         &self,
         music_provider: Arc<dyn MusicProvider>,
-        credential: Option<&str>,
+        metadata_provider: Option<Arc<dyn MetadataProvider>>,
+        music_credential: Option<&str>,
+        metadata_credential: Option<&str>,
     ) -> PenguinDownloader {
-        let has_cred = credential.is_some();
         let id = music_provider.info().map(|i| i.id().to_string()).unwrap_or_default();
-        info!("created downloader for provider: {} (credential: {})", id, has_cred);
+        info!(
+            "created downloader for provider: {}",
+            id
+        );
         PenguinDownloader::new(
             music_provider,
-            credential.map(|s| s.to_string()),
+            metadata_provider,
+            music_credential.map(|s| s.to_string()),
+            metadata_credential.map(|s| s.to_string()),
         )
     }
 }

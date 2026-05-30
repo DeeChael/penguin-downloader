@@ -9,7 +9,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::error::CoreError;
 use crate::models::*;
-use crate::traits::MusicProvider;
+use crate::traits::{MetadataProvider, MusicProvider};
 
 /// 库内部使用的 Result 类型。
 pub type Result<T> = std::result::Result<T, CoreError>;
@@ -20,17 +20,26 @@ pub type Result<T> = std::result::Result<T, CoreError>;
 /// 以及可选的登录凭据，支持单曲、专辑和歌单的下载。
 pub struct PenguinDownloader {
     music_provider: Arc<dyn MusicProvider>,
-    credential: Option<String>,
+    metadata_provider: Option<Arc<dyn MetadataProvider>>,
+    music_credential: Option<String>,
+    metadata_credential: Option<String>,
     unknown_artists: Mutex<String>,
     disabled_qualities: Mutex<HashSet<i64>>,
 }
 
 impl PenguinDownloader {
     /// 创建一个新的 `PenguinDownloader`。
-    pub fn new(music_provider: Arc<dyn MusicProvider>, credential: Option<String>) -> Self {
+    pub fn new(
+        music_provider: Arc<dyn MusicProvider>,
+        metadata_provider: Option<Arc<dyn MetadataProvider>>,
+        music_credential: Option<String>,
+        metadata_credential: Option<String>,
+    ) -> Self {
         Self {
             music_provider,
-            credential,
+            metadata_provider,
+            music_credential,
+            metadata_credential,
             unknown_artists: Mutex::new("unknown".to_string()),
             disabled_qualities: Mutex::new(HashSet::new()),
         }
@@ -353,7 +362,7 @@ impl PenguinDownloader {
                 want_verbatim,
                 translation,
                 roma,
-                self.credential.clone(),
+                self.music_credential.clone(),
             )
             .await;
 
@@ -367,7 +376,7 @@ impl PenguinDownloader {
                         false,
                         translation,
                         roma,
-                        self.credential.clone(),
+                        self.music_credential.clone(),
                     )
                     .await?
             }
@@ -415,6 +424,39 @@ impl PenguinDownloader {
         Ok(())
     }
 
+    /// 如果设置了元数据提供者，获取并嵌入元数据到音频文件。
+    async fn embed_metadata(
+        &self,
+        song: &SongInfo,
+        path: &Path,
+    ) {
+        let provider = match &self.metadata_provider {
+            Some(p) => p.clone(),
+            None => return,
+        };
+
+        let metadata = match provider
+            .get_metadata(song, self.metadata_credential.clone())
+            .await
+        {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("failed to fetch metadata for song {}: {}", song.id, e);
+                return;
+            }
+        };
+
+        let path = path.to_path_buf();
+        if let Err(e) = tokio::task::spawn_blocking(move || {
+            embed_metadata_blocking(&metadata, &path)
+        })
+        .await
+        .map_err(|e| CoreError::Custom(format!("metadata embed task failed: {}", e)))
+        {
+            warn!("failed to embed metadata for song {}: {}", song.id, e);
+        }
+    }
+
     /// 下载一组歌曲（专辑/歌单共用逻辑）。
     ///
     /// 先解析每首歌的音质，再以 100 首为一批调用 `get_song_urls` 获取下载链接，
@@ -460,7 +502,7 @@ impl PenguinDownloader {
             let batch_map: HashMap<SongInfo, i64> = chunk.iter().cloned().collect();
             match self
                 .music_provider
-                .get_song_urls(batch_map, self.credential.clone())
+                .get_song_urls(batch_map, self.music_credential.clone())
                 .await
             {
                 Ok(urls) => {
@@ -615,6 +657,7 @@ impl PenguinDownloader {
                             .download_lyrics(song, &options, &folder, &fmt)
                             .await;
                     }
+                    self.embed_metadata(song, &file_path).await;
                 }
                 Err(e) => {
                     error!("download failed for song {}: {}", song.id, e);
@@ -682,7 +725,7 @@ impl PenguinDownloader {
 
         let urls = match self
             .music_provider
-            .get_song_urls(song_quality_map, self.credential.clone())
+            .get_song_urls(song_quality_map, self.music_credential.clone())
             .await
         {
             Ok(u) => u,
@@ -827,6 +870,7 @@ impl PenguinDownloader {
                 if options.lyrics != LyricsType::None {
                     let _ = self.download_lyrics(&song, &options, &folder, &fmt).await;
                 }
+                self.embed_metadata(&song, &file_path).await;
             }
             Err(e) => {
                 error!("download failed for song {}: {}", song.id, e);
@@ -868,7 +912,7 @@ impl PenguinDownloader {
             let pagination = Pagination { page_size, page };
             match self
                 .music_provider
-                .list_album_songs(album.clone(), Some(pagination), self.credential.clone())
+                .list_album_songs(album.clone(), Some(pagination), self.music_credential.clone())
                 .await
             {
                 Ok(result) => {
@@ -924,7 +968,7 @@ impl PenguinDownloader {
                 .list_playlist_songs(
                     playlist.clone(),
                     Some(pagination),
-                    self.credential.clone(),
+                    self.music_credential.clone(),
                 )
                 .await
             {
@@ -953,4 +997,92 @@ impl PenguinDownloader {
         self.download_song_collection(all_songs, options, folder_path, callbacks)
             .await;
     }
+}
+
+fn embed_metadata_blocking(metadata: &SongMetadata, path: &Path) -> std::result::Result<(), CoreError> {
+    use lofty::file::{AudioFile, TaggedFileExt};
+    use lofty::picture::{MimeType, Picture};
+    use lofty::prelude::Accessor;
+    use lofty::tag::ItemKey;
+
+    let mut tagged_file =
+        lofty::read_from_path(path).map_err(|e| CoreError::Custom(format!("lofty read error: {}", e)))?;
+
+    let tag = tagged_file
+        .primary_tag_mut()
+        .ok_or_else(|| CoreError::Custom("no tag available to write metadata".to_string()))?;
+
+    let tag_type = tag.tag_type();
+
+    if let Some(ref title) = metadata.title {
+        tag.set_title(title.clone());
+    }
+    if let Some(ref artists) = metadata.artists {
+        tag.set_artist(artists.join(", "));
+    }
+    if let Some(ref album) = metadata.album {
+        tag.set_album(album.clone());
+    }
+    if let Some(ref album_artists) = metadata.album_artists {
+        tag.insert_text(ItemKey::from_key(tag_type, "ALBUMARTIST"), album_artists.join(", "));
+    }
+    if let Some(ref genre) = metadata.genre {
+        tag.set_genre(genre.clone());
+    }
+    if let Some(year) = metadata.year {
+        tag.set_year(year as u32);
+    }
+    if let Some(track) = metadata.track {
+        tag.set_track(track);
+    }
+    if let Some(total) = metadata.track_total {
+        tag.set_track_total(total);
+    }
+    if let Some(disc) = metadata.disc {
+        tag.set_disk(disc);
+    }
+    if let Some(total) = metadata.disc_total {
+        tag.set_disk_total(total);
+    }
+    if let Some(ref composer) = metadata.composer {
+        tag.insert_text(ItemKey::from_key(tag_type, "COMPOSER"), composer.clone());
+    }
+    if let Some(ref lyrics) = metadata.lyrics {
+        tag.insert_text(ItemKey::from_key(tag_type, "LYRICS"), lyrics.clone());
+    }
+    if let Some(ref cover_data) = metadata.cover {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png");
+        let mime = MimeType::from_str(&format!("image/{}", ext));
+        let picture = Picture::new_unchecked(
+            lofty::picture::PictureType::CoverFront,
+            Some(mime),
+            None,
+            cover_data.clone(),
+        );
+        let _ = tag.set_picture(0, picture);
+    }
+    if let Some(bpm) = metadata.bpm {
+        tag.insert_text(ItemKey::from_key(tag_type, "BPM"), bpm.to_string());
+    }
+    if let Some(ref isrc) = metadata.isrc {
+        tag.insert_text(ItemKey::from_key(tag_type, "ISRC"), isrc.clone());
+    }
+    if let Some(ref label) = metadata.label {
+        tag.insert_text(ItemKey::from_key(tag_type, "LABEL"), label.clone());
+    }
+    if let Some(ref copyright) = metadata.copyright {
+        tag.insert_text(ItemKey::from_key(tag_type, "COPYRIGHT"), copyright.clone());
+    }
+    if let Some(ref comment) = metadata.comment {
+        tag.set_comment(comment.clone());
+    }
+
+    tagged_file
+        .save_to_path(path, lofty::config::WriteOptions::default())
+        .map_err(|e| CoreError::Custom(format!("lofty save error: {}", e)))?;
+
+    Ok(())
 }

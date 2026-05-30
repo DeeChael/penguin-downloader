@@ -1,6 +1,53 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// 歌曲元数据，用于嵌入音频文件标签。
+///
+/// 参考 [lofty](https://docs.rs/lofty) 库支持的元数据键值定义，所有字段均为可选。
+#[derive(Clone, Debug, Default)]
+pub struct SongMetadata {
+    /// 歌曲标题。
+    pub title: Option<String>,
+    /// 艺术家列表。
+    pub artists: Option<Vec<String>>,
+    /// 专辑名称。
+    pub album: Option<String>,
+    /// 专辑艺术家列表。
+    pub album_artists: Option<Vec<String>>,
+    /// 流派。
+    pub genre: Option<String>,
+    /// 年份。
+    pub year: Option<i32>,
+    /// 音轨号。
+    pub track: Option<u32>,
+    /// 总音轨数。
+    pub track_total: Option<u32>,
+    /// 碟号。
+    pub disc: Option<u32>,
+    /// 总碟数。
+    pub disc_total: Option<u32>,
+    /// 作曲者。
+    pub composer: Option<String>,
+    /// 歌词。
+    pub lyrics: Option<String>,
+    /// 封面图片数据（二进制）。
+    pub cover: Option<Vec<u8>>,
+    /// BPM。
+    pub bpm: Option<u16>,
+    /// ISRC 编码。
+    pub isrc: Option<String>,
+    /// 唱片公司。
+    pub label: Option<String>,
+    /// 版权信息。
+    pub copyright: Option<String>,
+    /// 编码工具。
+    pub encoder: Option<String>,
+    /// 备注。
+    pub comment: Option<String>,
+    /// 是否属于合集。
+    pub compilation: Option<bool>,
+}
+
 /// 提供者基本信息。
 #[derive(Clone, Debug)]
 pub enum ProviderInfo {

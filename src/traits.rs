@@ -146,10 +146,24 @@ pub trait MusicProvider: Send + Sync {
 
 /// 元数据提供者（Metadata Provider）trait。
 ///
-/// 预留接口，当前仅提供提供者基本信息。
+/// 提供元数据查询功能，用于为已下载的音频文件嵌入标签。
+#[async_trait]
 pub trait MetadataProvider: Send + Sync {
     /// 获取提供者的基本信息。
-    fn info(&self) -> ProviderInfo;
+    fn info(&self) -> Result<ProviderInfo>;
+
+    /// 获取此提供者支持的登录方式列表。
+    fn list_login_methods(&self) -> Result<Vec<LoginMethod>>;
+
+    /// 通过登录凭证获取用户名。
+    fn get_username(&self, credential: &str) -> Option<String>;
+
+    /// 获取指定歌曲的元数据。
+    async fn get_metadata(
+        &self,
+        song: &SongInfo,
+        credential: Option<String>,
+    ) -> Result<SongMetadata>;
 }
 
 /// 逐字歌词提供者（Verbatim Provider）trait。
